@@ -31,10 +31,13 @@ Jump to: [Writing with pipeline, packets and acks](docs/DOCUMENTATION.md#81-writ
 ## Quick start
 
 ```bash
-./hdfs build                # compile into out/ (only javac needed)
-./hdfs demo                 # guided tour through all core concepts (~1 min)
-./hdfs minicluster 3        # NameNode + 3 DataNodes in one JVM (runs until Ctrl+C)
+./hdfs build
+./hdfs demo
+./hdfs minicluster 3
 ```
+
+`build` compiles into `out/` (only `javac` needed), `demo` is a guided tour through all core concepts (~1 min),
+and `minicluster 3` starts a NameNode + 3 DataNodes in one JVM (runs until Ctrl+C).
 
 The commands below run in a **second terminal** while the minicluster is running.
 If you have changed the code, you must restart the minicluster (`./hdfs build` first).
@@ -78,32 +81,48 @@ which these paths live. Individual values can be overridden with `-Dname=value`,
 The project directory contains the sample file `demo.txt` with the content `This is a test 234 test`.
 The command names match `hdfs dfs` from the original.
 
-```bash
-# local -> HDFS
-./hdfs dfs -mkdir /user/me
-./hdfs dfs -copyFromLocal demo.txt /user/me/demo.txt    # equivalent: -put
-./hdfs dfs -put -f demo.txt /user/me/demo.txt           # -f: overwrite existing file
+**Local → HDFS** (`-put` is equivalent to `-copyFromLocal`; `-f` overwrites an existing file):
 
-# inspect
+```bash
+./hdfs dfs -mkdir /user/me
+./hdfs dfs -copyFromLocal demo.txt /user/me/demo.txt
+./hdfs dfs -put -f demo.txt /user/me/demo.txt
+```
+
+**Inspect** (`-metasave` prints INodes, block IDs, leases and DataNodes):
+
+```bash
 ./hdfs dfs -ls -R /
 ./hdfs dfs -cat /user/me/demo.txt
-./hdfs dfs -metasave                                    # INodes, blk IDs, leases, DataNodes
+./hdfs dfs -metasave
+```
 
-# append
-./hdfs dfs -appendToFile demo.txt /user/me/demo.txt     # append a local file
-echo "one more line" | ./hdfs dfs -appendToFile - /user/me/demo.txt   # '-' = stdin
-(head -c 100000 /dev/urandom; sleep 30) | ./hdfs dfs -appendToFile - /user/me/demo.txt   # watch rbw/ for 30 s
+**Append** – a local file, stdin (`-`), and a write held open for 30 s so you can watch `rbw/`:
 
-# HDFS -> local
-./hdfs dfs -copyToLocal /user/me/demo.txt demo-copy.txt   # equivalent: -get
+```bash
+./hdfs dfs -appendToFile demo.txt /user/me/demo.txt
+echo "one more line" | ./hdfs dfs -appendToFile - /user/me/demo.txt
+(head -c 100000 /dev/urandom; sleep 30) | ./hdfs dfs -appendToFile - /user/me/demo.txt
+```
 
-# delete
-./hdfs dfs -rm /user/me/demo.txt                        # a single file
-./hdfs dfs -rm -r /user                                 # directory, recursively
-./hdfs dfs -rm -r '/*'                                  # EVERYTHING under / (quotes required!)
+**HDFS → local** (`-get` is equivalent to `-copyToLocal`):
 
-# try out lease recovery
-./hdfs dfs -writeAndCrash /user/me/x.bin 100000         # simulate a client crash
+```bash
+./hdfs dfs -copyToLocal /user/me/demo.txt demo-copy.txt
+```
+
+**Delete** – a single file, a directory recursively, and **everything** under `/` (quotes required!):
+
+```bash
+./hdfs dfs -rm /user/me/demo.txt
+./hdfs dfs -rm -r /user
+./hdfs dfs -rm -r '/*'
+```
+
+**Try out lease recovery** – `-writeAndCrash` simulates a client crash:
+
+```bash
+./hdfs dfs -writeAndCrash /user/me/x.bin 100000
 ./hdfs dfs -recoverLease /user/me/x.bin
 ```
 
@@ -155,10 +174,17 @@ What this means on restart (covered by the tests `restartedDataNodeReportsItsRep
 
 So there are two ways to clean up:
 
-```bash
-./hdfs dfs -rm -r '/*'     # with the cluster running: delete everything, the DataNodes clean up their disks
-rm -rf data/               # with the cluster stopped: remove the DataNode directories completely
-```
+* With the cluster running, delete everything – the DataNodes clean up their disks:
+
+  ```bash
+  ./hdfs dfs -rm -r '/*'
+  ```
+
+* With the cluster stopped, remove the DataNode directories completely:
+
+  ```bash
+  rm -rf data/
+  ```
 
 Background (block reports, invalidate, comparison with FSImage/EditLog): [Section 8.8](docs/DOCUMENTATION.md#88-restart-what-survives).
 
