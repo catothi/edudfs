@@ -1,0 +1,5 @@
+out/
+target/
+demo-data/
+data/
+.DS_Store

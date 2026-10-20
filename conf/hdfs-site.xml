@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<!--
+  hdfs-site.xml - ONE file for the NameNode, all DataNodes and the client.
+
+  In a real cluster exactly this file is present on every machine. The paths in
+  dfs.datanode.data.dir are therefore the same on all DataNodes; but each machine has
+  its own disks, mounted under these paths.
+
+  EduDFS runs on ONE machine. So that each DataNode still has "its own disks",
+  every DataNode gets a root directory that represents its file system
+  (MiniDFSCluster: <base>/dn<i>, ./hdfs datanode: first argument). The paths below
+  are resolved relative to this root directory:
+
+      /data/1/dfs/dn  on DataNode 2   ->   data/dn2/data/1/dfs/dn
+
+  A subdirectory data/<n> thus plays the role of a mounted disk
+  (original: e.g. /dev/sdb mounted on /data/1).
+
+  Values can be overridden with -Dname=value.
+-->
+<configuration>
+
+  <!-- ==================================================== DataNode storage -->
+  <property>
+    <name>dfs.datanode.data.dir</name>
+    <value>[DISK]/data/1/dfs/dn,[DISK]/data/2/dfs/dn</value>
+    <description>
+      Comma-separated list of volumes (one disk = one volume = one storage with its own
+      storageID). An optional prefix [DISK], [SSD], [ARCHIVE] or [RAM_DISK] sets the
+      StorageType. The DataNode distributes new blocks round-robin across the volumes
+      (RoundRobinVolumeChoosingPolicy).
+    </description>
+  </property>
+
+  <property>
+    <name>dfs.datanode.failed.volumes.tolerated</name>
+    <value>1</value>
+    <description>
+      How many volumes may fail before the DataNode shuts down.
+      Original default: 0. Here 1, so that a disk failure can be observed
+      without losing the whole DataNode right away.
+    </description>
+  </property>
+
+  <!-- ============================================================= Blocks -->
+  <property>
+    <name>dfs.replication</name>
+    <value>3</value>
+    <description>Default replication factor for new files.</description>
+  </property>
+
+  <property>
+    <name>dfs.blocksize</name>
+    <value>1m</value>
+    <description>Default block size (original: 128m). Suffixes k, m, g are allowed.</description>
+  </property>
+
+  <!-- ===================================================== Heartbeats/Reports -->
+  <property>
+    <name>dfs.heartbeat.interval</name>
+    <value>1s</value>
+    <description>Interval of the heartbeats DataNode -> NameNode (original: 3s).</description>
+  </property>
+
+  <property>
+    <name>dfs.blockreport.intervalMsec</name>
+    <value>30000</value>
+    <description>Interval of the full block reports in ms (original: 21600000 = 6 h).</description>
+  </property>
+
+  <!--
+    Not configurable, because EduDFS simplifies it:
+      dfs.namenode.name.dir           the NameNode persists nothing (no FSImage/EditLog)
+      dfs.datanode.address            ports differ per DataNode (50010+i), since all run on localhost
+      dfs.datanode.ipc.address        likewise (50020+i)
+      dfs.datanode.fsdataset.volume.choosing.policy   only RoundRobin is implemented
+  -->
+
+</configuration>

@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Launcher for EduDFS (modeled on bin/hdfs).
+#   ./hdfs build                         compile (javac only, no Maven needed)
+#   ./hdfs demo                          guided tour (MiniDFSCluster + scenarios)
+#   ./hdfs minicluster [n] [dir]         NameNode + n DataNodes in one JVM
+#   ./hdfs namenode                      NameNode as a separate process
+#   ./hdfs datanode <root> <xfer> <ipc>  DataNode as a separate process (root = its "machine")
+#   ./hdfs dfs -ls / ...                 shell (see ./hdfs dfs)
+#   ./hdfs test                          all tests (Maven + JUnit 5)
+set -e
+cd "$(dirname "$0")"
+OUT=out
+
+build() {
+  rm -rf "$OUT"
+  javac -d "$OUT" $(find src/main/java -name '*.java')
+}
+
+[ -d "$OUT" ] || build
+
+cmd="$1"; shift || true
+case "$cmd" in
+  build)       build ;;
+  demo)        exec java $JAVA_OPTS -cp "$OUT" edudfs.tools.Demo "$@" ;;
+  minicluster) exec java $JAVA_OPTS -cp "$OUT" edudfs.tools.MiniDFSCluster "$@" ;;
+  namenode)    exec java $JAVA_OPTS -cp "$OUT" edudfs.server.namenode.NameNode "$@" ;;
+  datanode)    exec java $JAVA_OPTS -cp "$OUT" edudfs.server.datanode.DataNode "$@" ;;
+  test)        exec mvn -q test "$@" ;;
+  dfs)         exec java $JAVA_OPTS -cp "$OUT" edudfs.tools.DFSShell "$@" ;;
+  *)           sed -n '2,9p' "$0"; exit 1 ;;
+esac

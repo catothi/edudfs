@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<!--
+  core-site.xml - shared settings for all Hadoop components.
+  (As in the original) it is identical on every machine of the cluster.
+-->
+<configuration>
+
+  <property>
+    <name>fs.defaultFS</name>
+    <value>hdfs://localhost:9000</value>
+    <description>Address of the NameNode. Clients and DataNodes find it through this.</description>
+  </property>
+
+</configuration>

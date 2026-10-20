@@ -1,0 +1,17 @@
+EduDFS
+
+The source code of this project is licensed under the Apache License,
+Version 2.0 (see LICENSE). The documentation (README.md and the Markdown
+files in docs/) is licensed under the Creative Commons Attribution 4.0
+International License (CC BY 4.0, see docs/LICENSE).
+
+EduDFS is an independent teaching project. Its design, terminology and
+class, method and field names are inspired by Apache Hadoop HDFS so that
+learners can find the corresponding code in the original project. It
+contains no source code from Apache Hadoop.
+
+EduDFS is not affiliated with, endorsed by, or sponsored by the Apache
+Software Foundation. Apache, Apache Hadoop, Hadoop, HDFS and the Apache
+feather logo are trademarks or registered trademarks of the Apache Software
+Foundation in the United States and/or other countries. All other
+trademarks are the property of their respective owners.

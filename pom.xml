@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>edudfs</groupId>
+  <artifactId>edudfs</artifactId>
+  <version>1.0</version>
+  <name>EduDFS (teaching implementation)</name>
+  <description>A small teaching implementation of a distributed file system in Java, inspired by Apache Hadoop HDFS. Not affiliated with the Apache Software Foundation.</description>
+
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>5.11.4</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.2</version>
+        <configuration>
+          <!-- Integration tests use fixed ports (9000, 50010+) -> run strictly one after another in one JVM -->
+          <forkCount>1</forkCount>
+          <reuseForks>true</reuseForks>
+          <!-- Shortened timeouts so that lease recovery & co. complete within seconds -->
+          <systemPropertyVariables>
+            <edudfs.heartbeat.interval.ms>500</edudfs.heartbeat.interval.ms>
+            <edudfs.heartbeat.expire.ms>3000</edudfs.heartbeat.expire.ms>
+            <edudfs.lease.softlimit.ms>2000</edudfs.lease.softlimit.ms>
+            <edudfs.lease.hardlimit.ms>5000</edudfs.lease.hardlimit.ms>
+            <edudfs.blockrecovery.timeout.ms>5000</edudfs.blockrecovery.timeout.ms>
+            <edudfs.quiet>true</edudfs.quiet>
+          </systemPropertyVariables>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>
