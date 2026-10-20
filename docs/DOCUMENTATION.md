@@ -169,33 +169,38 @@ the exceptions and the pure data classes in `server/protocol/`.
 ## 2. Quick start
 
 ```bash
-./hdfs build                 # compiles to out/ (only javac required)
-./hdfs demo                  # guided tour, ~1 minute
+./hdfs build
+./hdfs demo
 ```
 
-Interactively with a running cluster:
+`build` compiles to `out/` (only javac required), `demo` is a guided tour (~1 minute).
+
+Interactively with a running cluster. **Terminal 1** – NameNode + 3 DataNodes in one JVM:
 
 ```bash
-# Terminal 1: NameNode + 3 DataNodes in one JVM
 ./hdfs minicluster 3
+```
 
-# Terminal 2:
+**Terminal 2** – the second `-metasave` shows the lease and the block UNDER_CONSTRUCTION left behind by the crash:
+
+```bash
 ./hdfs dfs -mkdir /user/me
 ./hdfs dfs -put -bs 65536 README.md /user/me/readme.md
 ./hdfs dfs -ls -R /
 ./hdfs dfs -cat /user/me/readme.md
 ./hdfs dfs -metasave
 ./hdfs dfs -writeAndCrash /user/me/x.bin 100000
-./hdfs dfs -metasave         # lease + block UNDER_CONSTRUCTION
+./hdfs dfs -metasave
 ./hdfs dfs -recoverLease /user/me/x.bin
 ```
 
 Or as separate processes (more realistic – each node its own JVM). The first argument is the root of the
-DataNode's "machine"; its disks live below it, as specified by `conf/hdfs-site.xml` (6.1):
+DataNode's "machine"; its disks live below it, as specified by `conf/hdfs-site.xml` (6.1) –
+for the first DataNode, the volumes are `/tmp/dn0/data/1/dfs/dn` and `/tmp/dn0/data/2/dfs/dn`:
 
 ```bash
 ./hdfs namenode
-./hdfs datanode /tmp/dn0 50010 50020     # volumes: /tmp/dn0/data/1/dfs/dn, /tmp/dn0/data/2/dfs/dn
+./hdfs datanode /tmp/dn0 50010 50020
 ./hdfs datanode /tmp/dn1 50011 50021
 ./hdfs datanode /tmp/dn2 50012 50022
 ```
@@ -1424,18 +1429,25 @@ That is exercise 5.
 
 A normal `-put` or `-appendToFile` takes only milliseconds: the replica sits in `rbw/` so briefly that you
 never see it in the file system. With `-appendToFile -` (data from stdin) and a pause, the write can be
-kept open:
+kept open.
+
+**Terminal 1:**
 
 ```bash
-# Terminal 1
 ./hdfs minicluster 3
+```
 
-# Terminal 2: show block files every second (macOS has no `watch`)
+**Terminal 2** – show the block files every second (macOS has no `watch`):
+
+```bash
 while true; do clear; date; find data -name 'blk_*' | sort; sleep 1; done
+```
 
-# Terminal 3
+**Terminal 3** – append needs an existing file, so `-put` comes first:
+
+```bash
 ./hdfs dfs -mkdir /user/me
-./hdfs dfs -put demo.txt /user/me/demo.txt              # append needs an existing file
+./hdfs dfs -put demo.txt /user/me/demo.txt
 (head -c 100000 /dev/urandom; sleep 30) | ./hdfs dfs -appendToFile - /user/me/demo.txt
 ```
 
@@ -1982,15 +1994,19 @@ The right-hand column is written out in full so that you can find the class dire
 | `Invalid value configured for dfs.datanode.failed.volumes.tolerated` | the value must be smaller than the number of volumes in `dfs.datanode.data.dir` |
 | `Too many failed volumes` | more volumes broken or impossible to create than tolerated – check permissions/paths under the DataNode root |
 | Configuration is not read | process not started in the project directory – use `./hdfs` or `-Dedudfs.conf.dir=…` |
+| Pasted command fails with `Path must be absolute: …`, `command not found: #`, or a stray local file appears | zsh (macOS default shell) does not treat `#` as a comment interactively, so comment words become arguments. Run `setopt interactivecomments`, or permanently: `echo 'setopt interactivecomments' >> ~/.zshrc` |
 
 ---
 
 ## 16. Tests
 
+`./hdfs test` is the same as `mvn -q test`; plain `mvn test` prints a summary (results in
+`target/surefire-reports/`); `-Dtest=` runs a single test:
+
 ```bash
-./hdfs test        # = mvn -q test
-mvn test           # with summary; results in target/surefire-reports/
-mvn test -Dtest=MiniDFSClusterTest#softLimitLetsAnotherClientTriggerRecovery   # single test
+./hdfs test
+mvn test
+mvn test -Dtest=MiniDFSClusterTest#softLimitLetsAnotherClientTriggerRecovery
 ```
 
 121 tests with JUnit 5, runtime approx. 45 s. The Surefire configuration in the `pom.xml` shortens the timings

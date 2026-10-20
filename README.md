@@ -39,6 +39,20 @@ Jump to: [Writing with pipeline, packets and acks](docs/DOCUMENTATION.md#81-writ
 `build` compiles into `out/` (only `javac` needed), `demo` is a guided tour through all core concepts (~1 min),
 and `minicluster 3` starts a NameNode + 3 DataNodes in one JVM (runs until Ctrl+C).
 
+**macOS / zsh:** zsh does not treat `#` as a comment when you paste commands, so pasted comments become
+arguments. The commands in this README contain no comments, but if you copy shell snippets from elsewhere,
+enable comments for the current terminal:
+
+```bash
+setopt interactivecomments
+```
+
+or permanently for all new terminals:
+
+```bash
+echo 'setopt interactivecomments' >> ~/.zshrc
+```
+
 The commands below run in a **second terminal** while the minicluster is running.
 If you have changed the code, you must restart the minicluster (`./hdfs build` first).
 
