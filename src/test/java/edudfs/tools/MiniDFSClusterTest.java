@@ -537,4 +537,34 @@ class MiniDFSClusterTest {
         waitFor("block re-replicated", 20000, () -> allBlocksHaveReplicas("/f", 3));
         assertArrayEquals(d, read("/f"));
     }
+
+    // ====================================================== seek/pread, hflush
+    @Test
+    void preadAndSeekAcrossBlockBoundaries() throws IOException {
+        byte[] d = data(3 * BS + 1000);
+        write(client, "/f", d);
+        try (DFSInputStream in = client.open("/f")) {
+            byte[] b = new byte[5000];
+            in.readFully(BS - 2000, b, 0, b.length);  // spans block 0 -> block 1
+            assertArrayEquals(Arrays.copyOfRange(d, BS - 2000, BS + 3000), b);
+            assertEquals(0, in.getPos());  // pread does not move the position
+            in.seek(3 * BS + 10);
+            assertEquals(d[3 * BS + 10] & 0xff, in.read());
+            assertEquals(3 * BS + 11, in.getPos());
+        }
+    }
+
+    @Test
+    void hflushedDataSurvivesWriterCrash() throws Exception {
+        DFSClient writer = new DFSClient();
+        DFSOutputStream out = writer.create("/wal", false, REPL, BS);
+        byte[] d = data(1700);
+        out.write(d, 0, 1000);
+        out.hflush();                // 1000 bytes: one full chunk + a partial one
+        out.write(d, 1000, 700);
+        out.hflush();                // the partial chunk is sent again and overwritten
+        writer.abort();              // crash: no close(), the file stays under construction
+        waitFor("lease recovered", 20000, () -> client.recoverLease("/wal"));
+        assertArrayEquals(d, read("/wal"));
+    }
 }

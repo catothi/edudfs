@@ -35,8 +35,13 @@ import java.util.List;
  *  End of block: empty packet with lastPacketInBlock, wait for all acks, next block
  *  close(): finish the last block, complete() at the NN (with retry)
  * </pre>
+ * hflush(): sends the buffered bytes as a (partial) packet and waits until all DataNodes of the
+ * pipeline have acknowledged them. The bytes of a not yet full 512-byte chunk stay in the buffer and
+ * are sent AGAIN with the next packet (as in the original), because a CRC always covers a whole chunk.
+ * The DataNodes then overwrite the partial chunk (BlockReceiver).
+ *
  * Simplifications: no pipeline recovery on DataNode failure during the write
- * (the stream fails), no hflush/hsync; append always starts a new block
+ * (the stream fails); hsync = hflush (no fsync on the DataNodes); append always starts a new block
  * (like CreateFlag.NEW_BLOCK in the original), a last block that is not full is not continued.
  */
 public class DFSOutputStream extends OutputStream {
@@ -110,6 +115,35 @@ public class DFSOutputStream extends OutputStream {
         int[] sums = DataChecksum.computeChunkedSums(data, 0, bufCount);
         streamer.enqueue(new Packet(offset, seqno++, false, data, bufCount, sums));
         bufCount = 0;
+    }
+
+    /**
+     * Corresponds to DFSOutputStream.hflush (Syncable): after the return, every byte written so far
+     * is in the memory/page cache of ALL DataNodes of the pipeline and is visible to a lease
+     * recovery (it keeps the minimum RBW length). HBase calls this for every WAL write.
+     */
+    public synchronized void hflush() throws IOException {
+        if (closed) {
+            throw new IOException("Stream closed: " + src);
+        }
+        streamer.checkError();
+        if (bufCount > 0) {
+            int partialChunk = (int) (bytesCurBlock % HdfsConfig.BYTES_PER_CHECKSUM);
+            byte[] keep = Arrays.copyOfRange(buf, bufCount - partialChunk, bufCount);
+            enqueueCurrentPacket();
+            // The next packet starts at the beginning of the partial chunk and repeats its bytes
+            System.arraycopy(keep, 0, buf, 0, keep.length);
+            bufCount = keep.length;
+        }
+        streamer.waitForAckedQueue();
+    }
+
+    /**
+     * Corresponds to DFSOutputStream.hsync. In the original the DataNodes additionally call
+     * fsync, so the data survives a power failure. EduDFS: same as hflush.
+     */
+    public void hsync() throws IOException {
+        hflush();
     }
 
     @Override
@@ -217,6 +251,20 @@ public class DFSOutputStream extends OutputStream {
                 dataQueue.addLast(p);
                 dataQueue.notifyAll();
             }
+        }
+
+        /** Waits until every packet enqueued so far has been sent and acknowledged (for hflush). */
+        void waitForAckedQueue() throws IOException {
+            synchronized (dataQueue) {
+                while (lastException == null && !streamerClosed && (!dataQueue.isEmpty() || !ackQueue.isEmpty())) {
+                    try {
+                        dataQueue.wait(1000);
+                    } catch (InterruptedException e) {
+                        throw new InterruptedIOException();
+                    }
+                }
+            }
+            checkError();
         }
 
         Block getLastBlock() {

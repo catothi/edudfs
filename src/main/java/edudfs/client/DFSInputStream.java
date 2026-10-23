@@ -14,6 +14,7 @@ import java.io.BufferedOutputStream;
 import java.io.Closeable;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.Socket;
@@ -27,6 +28,11 @@ import java.util.Set;
  * directly from a DataNode. If a DataNode fails or returns corrupt data
  * (checksum error), the next DataNode is tried; corrupt replicas are
  * reported to the NameNode (reportBadBlocks).
+ *
+ * Besides sequential reading, the stream supports {@link #seek(long)} and positional reads
+ * ("pread", {@link #read(long, byte[], int, int)}) as in the original (Seekable,
+ * PositionedReadable). HBase needs them: an HFile reader jumps directly to the block that the
+ * block index names.
  */
 public class DFSInputStream extends InputStream {
 
@@ -49,6 +55,53 @@ public class DFSInputStream extends InputStream {
 
     public long getFileLength() {
         return locatedBlocks.getFileLength();
+    }
+
+    /** Current position in the file (Seekable.getPos). */
+    public synchronized long getPos() {
+        return pos;
+    }
+
+    /**
+     * Seekable.seek: the next read() starts at targetPos. The connection to the DataNode is
+     * dropped; read() opens a new one at the right offset (blockSeekTo).
+     */
+    public synchronized void seek(long targetPos) throws IOException {
+        if (targetPos < 0 || targetPos > getFileLength()) {
+            throw new IOException("Cannot seek to " + targetPos + " in " + src + " (length " + getFileLength() + ")");
+        }
+        if (targetPos != pos) {
+            closeBlockReader();
+            pos = targetPos;
+        }
+    }
+
+    /**
+     * PositionedReadable.read ("pread"): reads at {@code position} without changing the
+     * stream position. The original opens a separate connection for this, so several threads
+     * can pread in parallel; here the stream is simply locked, repositioned and reset.
+     */
+    public synchronized int read(long position, byte[] b, int off, int len) throws IOException {
+        long oldPos = pos;
+        try {
+            seek(position);
+            return read(b, off, len);
+        } finally {
+            seek(oldPos);
+        }
+    }
+
+    /** PositionedReadable.readFully: like pread, but reads exactly len bytes. */
+    public synchronized void readFully(long position, byte[] b, int off, int len) throws IOException {
+        int done = 0;
+        while (done < len) {
+            int n = read(position + done, b, off + done, len - done);
+            if (n < 0) {
+                throw new EOFException("End of file reached before reading fully: " + src + " at "
+                        + (position + done));
+            }
+            done += n;
+        }
     }
 
     @Override

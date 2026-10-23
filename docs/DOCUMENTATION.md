@@ -1166,7 +1166,7 @@ blk_1073741827_1003   6             0    45056    false    (on close(), 88 check
 | Ack content | status per DataNode | additionally flags (e.g. ECN/overload) and `downstreamAckTimeNanos` |
 | CRC error | connection abort | ack with `ERROR_CHECKSUM` |
 | DataNode fails | stream fails | pipeline recovery: remove node, get new GS (`updatePipeline`), keep writing |
-| `hflush`/`hsync` | – | packet with `syncBlock`, data visible to readers or on disk, respectively |
+| `hflush`/`hsync` | `hflush` sends the buffer as a packet and waits for all acks; the partial last chunk is sent again with the next packet and overwritten on the DataNodes. `hsync` = `hflush` | same resending of the partial chunk; `hsync` additionally sets `syncBlock`, the DataNodes call fsync; after `hflush` the data is also visible to readers of the open file |
 
 ### 8.2 Reading a file
 
@@ -1190,6 +1190,9 @@ sequenceDiagram
 * The DataNode extends the range to **512-byte chunk boundaries**; the client discards the surplus bytes at the front.
 * On a connection or checksum error, the node is marked as "dead" for this block and the next one is tried.
 * Open files: only the blocks that are already completed are readable (simplification).
+* `seek(pos)` drops the connection; the next `read` connects anew at the block that contains `pos`.
+  `read(position, buf, off, len)` (pread) reads at `position` without changing the stream position –
+  an HFile reader uses this to jump straight to a block (see [EDUBASE.md](EDUBASE.md)).
 
 ### 8.3 Heartbeats, block reports, registration
 
@@ -1932,7 +1935,7 @@ The right-hand column is written out in full so that you can find the class dire
 | Further features | – | snapshots, quotas, xattrs, storage policies (StorageTypes are only reported here), erasure coding, caching |
 | Safe mode | no | yes – NN waits for block reports after startup |
 | Writing | an error in the pipeline aborts the stream | pipeline recovery (`updatePipeline`, new GS) |
-| API | create/write/close, append only with a new block | append into the last block, truncate, hflush, hsync, concat |
+| API | create/write/hflush/close, seek and pread, append only with a new block | append into the last block, truncate, real hsync (fsync), concat |
 | Reading open files | only completed blocks | client asks the DataNode for the "visible length" |
 | Placement | random DataNodes, per DataNode the DISK storage with the most free space | `BlockPlacementPolicyDefault`: rack-aware (1st replica local, 2nd/3rd on another rack), load, free space, storage policy |
 | Locking | one global lock | also global, but finer-grained (e.g. block lock splits in newer versions) |

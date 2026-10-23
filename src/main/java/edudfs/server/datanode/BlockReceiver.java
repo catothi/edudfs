@@ -1,6 +1,7 @@
 package edudfs.server.datanode;
 
 import edudfs.common.DataChecksum;
+import edudfs.common.HdfsConfig;
 import edudfs.common.Log;
 import edudfs.protocol.DataTransferProtocol;
 import edudfs.protocol.Packet;
@@ -28,6 +29,10 @@ import java.util.concurrent.LinkedBlockingQueue;
  *   <li>hands the packet to the PacketResponder, which sends the acks (own status +
  *       status of the downstream nodes) upstream.</li>
  * </ol>
+ * After an hflush() the client sends the last, partial 512-byte chunk again with the next packet
+ * (a CRC always covers a whole chunk). Such a packet starts BEFORE the current end of the
+ * replica; the partial chunk is then cut off and written anew (original: BlockReceiver
+ * "overwriting partial chunk").
  */
 class BlockReceiver implements Closeable {
 
@@ -67,7 +72,7 @@ class BlockReceiver implements Closeable {
             while (true) {
                 Packet p = Packet.read(in);
                 if (p.offsetInBlock != replica.getNumBytes()) {
-                    throw new IOException("Unexpected " + p + ", replica has " + replica.getNumBytes() + " bytes");
+                    overwritePartialChunk(p);
                 }
                 // 1) forward immediately (pipelining!)
                 if (mirrorOut != null) {
@@ -109,6 +114,19 @@ class BlockReceiver implements Closeable {
             close();
             responder.interrupt();
         }
+    }
+
+    /** The packet repeats the last partial chunk (after hflush): truncate data + CRCs to its start. */
+    private void overwritePartialChunk(Packet p) throws IOException {
+        long len = replica.getNumBytes();
+        int bpc = HdfsConfig.BYTES_PER_CHECKSUM;
+        if (p.offsetInBlock > len || p.offsetInBlock % bpc != 0 || len - p.offsetInBlock >= bpc) {
+            throw new IOException("Unexpected " + p + ", replica has " + len + " bytes");
+        }
+        checksumOut.flush();
+        FsDatasetImpl data = datanode.getFSDataset();
+        FsDatasetImpl.truncateBlock(data.getBlockFile(replica), data.getMetaFile(replica), p.offsetInBlock);
+        replica.setNumBytes(p.offsetInBlock);
     }
 
     @Override
