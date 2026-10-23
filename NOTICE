@@ -10,13 +10,21 @@ class, method and field names are inspired by Apache Hadoop HDFS so that
 learners can find the corresponding code in the original project. It
 contains no source code from Apache Hadoop.
 
-EduBase (package edubase) is part of this project. Its design,
+EduDFSBase (package edudfsbase) is part of this project. Its design,
 terminology and names are inspired by Apache HBase in the same way. It
 contains no source code from Apache HBase.
 
-EduDFS and EduBase are not affiliated with, endorsed by, or sponsored by
-the Apache Software Foundation. Apache, Apache Hadoop, Hadoop, HDFS,
-Apache HBase, HBase and the Apache feather logo are trademarks or
-registered trademarks of the Apache Software Foundation in the United
-States and/or other countries. All other
-trademarks are the property of their respective owners.
+In both parts, class, method, field and configuration names, file
+layouts, magic strings, shell syntax and some short log and error
+messages deliberately follow the originals, so that learners recognize
+them. The MurmurHash2 function (edudfsbase.util.MurmurHash) implements
+the public-domain algorithm by Austin Appleby; its Java formulation
+follows the common Java port also found in Apache Hadoop and Apache
+HBase (Apache License 2.0).
+
+EduDFS and EduDFSBase are not affiliated with, endorsed by, or
+sponsored by the Apache Software Foundation. Apache, Apache Hadoop,
+Hadoop, HDFS, Apache HBase, HBase and the Apache feather logo are
+trademarks or registered trademarks of the Apache Software Foundation in
+the United States and/or other countries. All other trademarks are the
+property of their respective owners.

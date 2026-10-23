@@ -2,12 +2,12 @@
 <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
 <!--
   hbase-site.xml - ONE file for the HMaster, all RegionServers and the client (as in the original).
-  EduBase reads it from the same directory as core-site.xml and hdfs-site.xml.
+  EduDFSBase reads it from the same directory as core-site.xml and hdfs-site.xml.
 
   Sizes and times are much smaller than in the original, so that flushes, compactions, WAL rolls
   and RegionServer failures can be watched with a handful of rows and within seconds.
   Values can be overridden with -Dname=value (JAVA_OPTS="-Dname=value" ./hbase ...).
-  All keys and their original defaults: docs/EDUBASE.md, section "Configuration".
+  All keys and their original defaults: docs/EDUDFSBASE.md, section "Configuration".
 -->
 <configuration>
 
@@ -70,12 +70,12 @@
     <value>6000</value>
     <description>
       A RegionServer without a heartbeat for this long (ms) is declared dead and its regions are
-      recovered (original: 90000; there ZooKeeper detects it - EduBase has no ZooKeeper).
+      recovered (original: 90000; there ZooKeeper detects it - EduDFSBase has no ZooKeeper).
     </description>
   </property>
 
   <!--
-    Not configurable, because EduBase simplifies it:
+    Not configurable, because EduDFSBase simplifies it:
       hbase.zookeeper.quorum          there is no ZooKeeper
       hbase.cluster.distributed       always "distributed" over RMI on localhost
       hbase.hregion.max.filesize      regions are never split automatically (pre-split with SPLITS => [...])

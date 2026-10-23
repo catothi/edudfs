@@ -50,7 +50,7 @@
             <edudfs.lease.hardlimit.ms>5000</edudfs.lease.hardlimit.ms>
             <edudfs.blockrecovery.timeout.ms>5000</edudfs.blockrecovery.timeout.ms>
             <edudfs.quiet>true</edudfs.quiet>
-            <!-- EduBase: RegionServer failure is detected after 3 s, the master waits only briefly at startup -->
+            <!-- EduDFSBase: RegionServer failure is detected after 3 s, the master waits only briefly at startup -->
             <zookeeper.session.timeout>3000</zookeeper.session.timeout>
             <hbase.regionserver.msginterval>300</hbase.regionserver.msginterval>
             <hbase.master.wait.on.regionservers.timeout>500</hbase.master.wait.on.regionservers.timeout>

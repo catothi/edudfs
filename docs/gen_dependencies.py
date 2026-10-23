@@ -2,14 +2,14 @@
 """
 Generates the dependencies of ALL classes of one project:
   edudfs (default) -> docs/DEPENDENCIES.md
-  edubase          -> docs/EDUBASE_DEPENDENCIES.md
+  edudfsbase          -> docs/EDUDFSBASE_DEPENDENCIES.md
 
 Sources:
   1. Source code analysis (comments/strings removed, identifiers matched against all project classes)
      - also finds constants that javac inlines (e.g. HdfsConfig.BYTES_PER_CHECKSUM)
   2. jdeps on the bytecode (if out/ exists and jdeps is available)
 
-Usage (in the project directory):  ./hdfs build && python3 docs/gen_dependencies.py [edudfs|edubase]
+Usage (in the project directory):  ./hdfs build && python3 docs/gen_dependencies.py [edudfs|edudfsbase]
 """
 import re
 import subprocess
@@ -18,13 +18,13 @@ from collections import defaultdict
 from pathlib import Path
 
 PROJECT = sys.argv[1] if len(sys.argv) > 1 else "edudfs"
-if PROJECT not in ("edudfs", "edubase"):
-    sys.exit("usage: gen_dependencies.py [edudfs|edubase]")
-TITLE = {"edudfs": "EduDFS", "edubase": "EduBase"}[PROJECT]
+if PROJECT not in ("edudfs", "edudfsbase"):
+    sys.exit("usage: gen_dependencies.py [edudfs|edudfsbase]")
+TITLE = {"edudfs": "EduDFS", "edudfsbase": "EduDFSBase"}[PROJECT]
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src" / "main" / "java" / PROJECT
 OUT = ROOT / "out"
-TARGET = ROOT / "docs" / ("DEPENDENCIES.md" if PROJECT == "edudfs" else "EDUBASE_DEPENDENCIES.md")
+TARGET = ROOT / "docs" / ("DEPENDENCIES.md" if PROJECT == "edudfs" else "EDUDFSBASE_DEPENDENCIES.md")
 PREFIX = PROJECT + "."
 
 
@@ -156,7 +156,7 @@ md = []
 w = md.append
 w(f"# {TITLE} – Dependencies of All Classes\n")
 w("> Generated automatically by `docs/gen_dependencies.py` – do not edit by hand.  ")
-w(f"> Regenerate: `./hdfs build && python3 docs/gen_dependencies.py{'' if PROJECT == 'edudfs' else ' edubase'}`\n")
+w(f"> Regenerate: `./hdfs build && python3 docs/gen_dependencies.py{'' if PROJECT == 'edudfs' else ' edudfsbase'}`\n")
 w(f"**{len(classes)} classes** in **{len(packages)} packages**, "
   f"**{sum(len(v) for v in deps.values())} class dependencies**. "
   f"Sources: source code analysis{' + `jdeps` (Bytecode)' if jdeps_used else ''}. "
@@ -209,7 +209,7 @@ else:
     w("None.\n")
 
 w("### Layering\n")
-if PROJECT == "edubase":
+if PROJECT == "edudfsbase":
     master_rs = [k for k in pkg_edges if short_pkg(k[0]) == "regionserver" and short_pkg(k[1]) == "master"]
     w("* `regionserver` does " + ("**not** " if not master_rs else "") + "depend on `master` – RegionServer and "
       "master know each other only via `ipc`.")
