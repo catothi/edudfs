@@ -7,7 +7,8 @@
 #   ./hbase hfile [options] -f <path>    look inside an HFile (./hbase hfile prints the options)
 #   ./hbase wal [options] <path>         look inside a WAL / recovered.edits file or directory
 #   ./hbase metasave                     state of master and all RegionServers
-#   ./hbase demo                         guided tour (starts its own EduDFS + EduDFSBase)
+#   ./hbase pe [options] <command>       generate load, e.g. ./hbase pe --rows=3000 --compact sequentialWrite
+#   ./hbase demo [index]                 guided tour (starts its own EduDFS + EduDFSBase); index: B+ tree tour
 set -e
 cd "$(dirname "$0")"
 OUT=out
@@ -23,6 +24,7 @@ case "$cmd" in
   hfile)        exec java $JAVA_OPTS -cp "$OUT" edudfsbase.io.hfile.HFilePrettyPrinter "$@" ;;
   wal)          exec java $JAVA_OPTS -cp "$OUT" edudfsbase.wal.WALPrettyPrinter "$@" ;;
   metasave)     exec java $JAVA_OPTS -cp "$OUT" edudfsbase.tools.HBaseShell -e metasave ;;
+  pe)           exec java $JAVA_OPTS -cp "$OUT" edudfsbase.tools.PerformanceEvaluation "$@" ;;
   demo)         exec java $JAVA_OPTS -cp "$OUT" edudfsbase.tools.Demo "$@" ;;
-  *)            sed -n '2,10p' "$0"; exit 1 ;;
+  *)            sed -n '2,11p' "$0"; exit 1 ;;
 esac

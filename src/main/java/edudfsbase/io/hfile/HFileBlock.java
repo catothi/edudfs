@@ -42,6 +42,7 @@ public class HFileBlock {
     private final long prevBlockOffset;
     private final String body;
     private List<KeyValue> cells;
+    private List<HFileBlockIndex.Entry> indexEntries;
 
     HFileBlock(BlockType blockType, long offset, int onDiskSizeWithoutHeader, long prevBlockOffset, String body) {
         this.blockType = blockType;
@@ -152,6 +153,14 @@ public class HFileBlock {
             cells = Collections.unmodifiableList(r);
         }
         return cells;
+    }
+
+    /** For index blocks: the entries (parsed once, then cached together with the block). */
+    public synchronized List<HFileBlockIndex.Entry> getIndexEntries() throws IOException {
+        if (indexEntries == null) {
+            indexEntries = HFileBlockIndex.parseEntries(this);
+        }
+        return indexEntries;
     }
 
     @Override

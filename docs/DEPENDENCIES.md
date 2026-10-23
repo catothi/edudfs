@@ -3,7 +3,7 @@
 > Generated automatically by `docs/gen_dependencies.py` – do not edit by hand.  
 > Regenerate: `./hdfs build && python3 docs/gen_dependencies.py`
 
-**77 classes** in **9 packages**, **390 class dependencies**. Sources: source code analysis + `jdeps` (Bytecode). Inner classes (e.g. `LeaseManager.Lease`, `DFSOutputStream.DataStreamer`) are attributed to their outer class. Package names are given without the prefix `edudfs.`.
+**78 classes** in **9 packages**, **396 class dependencies**. Sources: source code analysis + `jdeps` (Bytecode). Inner classes (e.g. `LeaseManager.Lease`, `DFSOutputStream.DataStreamer`) are attributed to their outer class. Package names are given without the prefix `edudfs.`.
 
 **How to read:** “A → B” means *A uses B* (import, field, parameter, call, inheritance or constant).
 
@@ -21,7 +21,7 @@
 flowchart LR
     client["client<br/>(4 classes)"]
     common["common<br/>(6 classes)"]
-    protocol["protocol<br/>(17 classes)"]
+    protocol["protocol<br/>(18 classes)"]
     server_blockmanagement["server.blockmanagement<br/>(10 classes)"]
     server_common["server.common<br/>(2 classes)"]
     server_datanode["server.datanode<br/>(12 classes)"]
@@ -29,7 +29,7 @@ flowchart LR
     server_protocol["server.protocol<br/>(12 classes)"]
     tools["tools<br/>(3 classes)"]
     client -- 10 --> common
-    client -- 24 --> protocol
+    client -- 27 --> protocol
     protocol -- 3 --> common
     server_blockmanagement -- 8 --> common
     server_blockmanagement -- 16 --> protocol
@@ -38,7 +38,7 @@ flowchart LR
     server_blockmanagement -- 14 --> server_protocol
     server_common -- 1 --> common
     server_datanode -- 16 --> common
-    server_datanode -- 26 --> protocol
+    server_datanode -- 27 --> protocol
     server_datanode -- 5 --> server_common
     server_datanode -- 26 --> server_protocol
     server_namenode -- 10 --> common
@@ -62,12 +62,12 @@ The number on an edge is the number of class dependencies between the two packag
 
 | uses → | `client` | `common` | `protocol` | `server.blockmanagement` | `server.common` | `server.datanode` | `server.namenode` | `server.protocol` | `tools` |
 |---|---|---|---|---|---|---|---|---|---|
-| `client` | · | 10 | 24 |  |  |  |  |  |  |
+| `client` | · | 10 | 27 |  |  |  |  |  |  |
 | `common` |  | · |  |  |  |  |  |  |  |
 | `protocol` |  | 3 | · |  |  |  |  |  |  |
 | `server.blockmanagement` |  | 8 | 16 | · | 5 |  | 3 | 14 |  |
 | `server.common` |  | 1 |  |  | · |  |  |  |  |
-| `server.datanode` |  | 16 | 26 |  | 5 | · |  | 26 |  |
+| `server.datanode` |  | 16 | 27 |  | 5 | · |  | 26 |  |
 | `server.namenode` |  | 10 | 23 | 13 | 3 |  | · | 12 |  |
 | `server.protocol` |  |  | 11 |  | 2 |  |  | · |  |
 | `tools` | 6 | 4 | 8 | 3 |  | 6 | 2 |  | · |
@@ -97,6 +97,7 @@ classDiagram
     IOException <|-- AlreadyBeingCreatedException
     Serializable <|.. Block
     Comparable <|.. Block
+    Serializable <|.. BlockLocalPathInfo
     Remote <|.. ClientDatanodeProtocol
     Remote <|.. ClientProtocol
     Serializable <|.. DatanodeID
@@ -146,6 +147,7 @@ classDiagram
 | `Block` | `Serializable`, `Comparable` |
 | `BlockCommand` | `DatanodeCommand` |
 | `BlockInfo` | `Block` |
+| `BlockLocalPathInfo` | `Serializable` |
 | `BlockReceiver` | `Closeable` |
 | `BlockRecoveryCommand` | `DatanodeCommand` |
 | `BlockReportReplica` | `Serializable` |
@@ -210,6 +212,7 @@ flowchart LR
     end
     subgraph protocol_ext_client["protocol"]
         protocol_Block["Block"]
+        protocol_BlockLocalPathInfo["BlockLocalPathInfo"]
         protocol_ClientDatanodeProtocol["ClientDatanodeProtocol"]
         protocol_ClientProtocol["ClientProtocol"]
         protocol_DataTransferProtocol["DataTransferProtocol"]
@@ -227,11 +230,14 @@ flowchart LR
     client_DFSClient --> client_LeaseRenewer
     client_DFSClient -.-> common_HdfsConfig
     client_DFSClient -.-> protocol_Block
+    client_DFSClient -.-> protocol_BlockLocalPathInfo
+    client_DFSClient -.-> protocol_ClientDatanodeProtocol
     client_DFSClient -.-> protocol_ClientProtocol
     client_DFSClient -.-> protocol_DatanodeInfo
     client_DFSClient -.-> protocol_HdfsFileStatus
     client_DFSClient -.-> protocol_LastBlockWithStatus
     client_DFSClient -.-> protocol_LocatedBlock
+    client_DFSClient -.-> protocol_LocatedBlocks
     client_DFSInputStream --> client_DFSClient
     client_DFSInputStream -.-> common_ChecksumException
     client_DFSInputStream -.-> common_DataChecksum
@@ -287,6 +293,7 @@ flowchart LR
     subgraph protocol_box["protocol"]
         protocol_AlreadyBeingCreatedException["AlreadyBeingCreatedException"]
         protocol_Block["Block"]
+        protocol_BlockLocalPathInfo["BlockLocalPathInfo"]
         protocol_ClientDatanodeProtocol["ClientDatanodeProtocol"]
         protocol_ClientProtocol["ClientProtocol"]
         protocol_DataTransferProtocol["DataTransferProtocol"]
@@ -307,7 +314,9 @@ flowchart LR
         common_DataChecksum["DataChecksum"]
         common_HdfsConfig["HdfsConfig"]
     end
+    protocol_BlockLocalPathInfo --> protocol_Block
     protocol_ClientDatanodeProtocol --> protocol_Block
+    protocol_ClientDatanodeProtocol --> protocol_BlockLocalPathInfo
     protocol_ClientProtocol --> protocol_Block
     protocol_ClientProtocol --> protocol_DatanodeInfo
     protocol_ClientProtocol --> protocol_HdfsFileStatus
@@ -494,6 +503,7 @@ flowchart LR
     end
     subgraph protocol_ext_server_datanode["protocol"]
         protocol_Block["Block"]
+        protocol_BlockLocalPathInfo["BlockLocalPathInfo"]
         protocol_ClientDatanodeProtocol["ClientDatanodeProtocol"]
         protocol_DataTransferProtocol["DataTransferProtocol"]
         protocol_DatanodeID["DatanodeID"]
@@ -569,6 +579,7 @@ flowchart LR
     server_datanode_DataNode -.-> common_HdfsConfig
     server_datanode_DataNode -.-> common_Log
     server_datanode_DataNode -.-> protocol_Block
+    server_datanode_DataNode -.-> protocol_BlockLocalPathInfo
     server_datanode_DataNode -.-> protocol_ClientDatanodeProtocol
     server_datanode_DataNode -.-> protocol_DataTransferProtocol
     server_datanode_DataNode -.-> protocol_DatanodeID
@@ -914,15 +925,15 @@ Columns: **uses** = outgoing dependencies (fan-out), **used by** = incoming (fan
 
 #### `DFSClient`
 
-*class* · [`src/main/java/edudfs/client/DFSClient.java`](../src/main/java/edudfs/client/DFSClient.java) · 197 lines
+*class* · [`src/main/java/edudfs/client/DFSClient.java`](../src/main/java/edudfs/client/DFSClient.java) · 221 lines
 
 Corresponds to org.apache.hadoop.hdfs.DFSClient.
 
 **extends / implements:** `Closeable`
 
-| uses (10) | used by (5) |
+| uses (13) | used by (5) |
 |---|---|
-| *client:* `DFSInputStream`, `DFSOutputStream`, `LeaseRenewer`<br/>*common:* `HdfsConfig`<br/>*protocol:* `Block`, `ClientProtocol`, `DatanodeInfo`, `HdfsFileStatus`, `LastBlockWithStatus`, `LocatedBlock` | *client:* `DFSInputStream`, `DFSOutputStream`, `LeaseRenewer`<br/>*tools:* `DFSShell`, `Demo` |
+| *client:* `DFSInputStream`, `DFSOutputStream`, `LeaseRenewer`<br/>*common:* `HdfsConfig`<br/>*protocol:* `Block`, `BlockLocalPathInfo`, `ClientDatanodeProtocol`, `ClientProtocol`, `DatanodeInfo`, `HdfsFileStatus`, `LastBlockWithStatus`, `LocatedBlock`, `LocatedBlocks` | *client:* `DFSInputStream`, `DFSOutputStream`, `LeaseRenewer`<br/>*tools:* `DFSShell`, `Demo` |
 
 #### `DFSInputStream`
 
@@ -1050,21 +1061,33 @@ Corresponds to org.apache.hadoop.hdfs.protocol.Block.
 
 **extends / implements:** `Serializable`, `Comparable`
 
-| uses (0) | used by (31) |
+| uses (0) | used by (32) |
 |---|---|
-| – | *client:* `DFSClient`, `DFSInputStream`, `DFSOutputStream`<br/>*protocol:* `ClientDatanodeProtocol`, `ClientProtocol`, `DataTransferProtocol`, `LocatedBlock`<br/>*server.blockmanagement:* `BlockInfo`, `BlockManager`, `BlocksMap`, `DatanodeDescriptor`, `DatanodeManager`, `SequentialBlockIdGenerator`<br/>*server.datanode:* `BPServiceActor`, `BlockReceiver`, `BlockRecoveryWorker`, `BlockSender`, `DataNode`, `DataXceiver`, `FsDatasetImpl`, `ReplicaInfo`<br/>*server.namenode:* `FSNamesystem`, `NameNodeRpcServer`<br/>*server.protocol:* `BlockCommand`, `BlockRecoveryCommand`, `BlockReportReplica`, `DatanodeProtocol`, `InterDatanodeProtocol`, `ReceivedDeletedBlockInfo`, `ReplicaRecoveryInfo`<br/>*tools:* `Demo` |
+| – | *client:* `DFSClient`, `DFSInputStream`, `DFSOutputStream`<br/>*protocol:* `BlockLocalPathInfo`, `ClientDatanodeProtocol`, `ClientProtocol`, `DataTransferProtocol`, `LocatedBlock`<br/>*server.blockmanagement:* `BlockInfo`, `BlockManager`, `BlocksMap`, `DatanodeDescriptor`, `DatanodeManager`, `SequentialBlockIdGenerator`<br/>*server.datanode:* `BPServiceActor`, `BlockReceiver`, `BlockRecoveryWorker`, `BlockSender`, `DataNode`, `DataXceiver`, `FsDatasetImpl`, `ReplicaInfo`<br/>*server.namenode:* `FSNamesystem`, `NameNodeRpcServer`<br/>*server.protocol:* `BlockCommand`, `BlockRecoveryCommand`, `BlockReportReplica`, `DatanodeProtocol`, `InterDatanodeProtocol`, `ReceivedDeletedBlockInfo`, `ReplicaRecoveryInfo`<br/>*tools:* `Demo` |
+
+#### `BlockLocalPathInfo`
+
+*class* · [`src/main/java/edudfs/protocol/BlockLocalPathInfo.java`](../src/main/java/edudfs/protocol/BlockLocalPathInfo.java) · 40 lines
+
+Corresponds to org.apache.hadoop.hdfs.protocol.BlockLocalPathInfo: where a DataNode keeps a replica on its local disk - block file and checksum (.meta) file. In the …
+
+**extends / implements:** `Serializable`
+
+| uses (1) | used by (3) |
+|---|---|
+| *protocol:* `Block` | *client:* `DFSClient`<br/>*protocol:* `ClientDatanodeProtocol`<br/>*server.datanode:* `DataNode` |
 
 #### `ClientDatanodeProtocol`
 
-*interface* · [`src/main/java/edudfs/protocol/ClientDatanodeProtocol.java`](../src/main/java/edudfs/protocol/ClientDatanodeProtocol.java) · 20 lines
+*interface* · [`src/main/java/edudfs/protocol/ClientDatanodeProtocol.java`](../src/main/java/edudfs/protocol/ClientDatanodeProtocol.java) · 25 lines
 
 Corresponds to org.apache.hadoop.hdfs.protocol.ClientDatanodeProtocol: RPC from the client directly to a DataNode (RMI, ipcPort).
 
 **extends / implements:** `Remote`
 
-| uses (1) | used by (2) |
+| uses (2) | used by (3) |
 |---|---|
-| *protocol:* `Block` | *client:* `DFSInputStream`<br/>*server.datanode:* `DataNode` |
+| *protocol:* `Block`, `BlockLocalPathInfo` | *client:* `DFSClient`, `DFSInputStream`<br/>*server.datanode:* `DataNode` |
 
 #### `ClientProtocol`
 
@@ -1180,9 +1203,9 @@ Corresponds to org.apache.hadoop.hdfs.protocol.LocatedBlocks.
 
 **extends / implements:** `Serializable`
 
-| uses (1) | used by (5) |
+| uses (1) | used by (6) |
 |---|---|
-| *protocol:* `LocatedBlock` | *client:* `DFSInputStream`<br/>*protocol:* `ClientProtocol`<br/>*server.namenode:* `FSNamesystem`, `NameNodeRpcServer`<br/>*tools:* `Demo` |
+| *protocol:* `LocatedBlock` | *client:* `DFSClient`, `DFSInputStream`<br/>*protocol:* `ClientProtocol`<br/>*server.namenode:* `FSNamesystem`, `NameNodeRpcServer`<br/>*tools:* `Demo` |
 
 #### `Packet`
 
@@ -1418,15 +1441,15 @@ Corresponds to org.apache.hadoop.hdfs.server.datanode.BlockSender. Reads data + 
 
 #### `DataNode`
 
-*class* · [`src/main/java/edudfs/server/datanode/DataNode.java`](../src/main/java/edudfs/server/datanode/DataNode.java) · 266 lines
+*class* · [`src/main/java/edudfs/server/datanode/DataNode.java`](../src/main/java/edudfs/server/datanode/DataNode.java) · 276 lines
 
 Corresponds to org.apache.hadoop.hdfs.server.datanode.DataNode.
 
 **extends / implements:** `InterDatanodeProtocol`, `ClientDatanodeProtocol`
 
-| uses (22) | used by (7) |
+| uses (23) | used by (7) |
 |---|---|
-| *common:* `HdfsConfig`, `Log`<br/>*protocol:* `Block`, `ClientDatanodeProtocol`, `DataTransferProtocol`, `DatanodeID`, `DatanodeInfo`, `PipelineAck`<br/>*server.datanode:* `BPServiceActor`, `BlockRecoveryWorker`, `BlockSender`, `DataXceiverServer`, `FsDatasetImpl`, `FsVolumeImpl`, `ReplicaInfo`, `StorageLocation`<br/>*server.protocol:* `BlockRecoveryCommand`, `DatanodeProtocol`, `DatanodeStorage`, `InterDatanodeProtocol`, `ReceivedDeletedBlockInfo`, `ReplicaRecoveryInfo` | *server.datanode:* `BPServiceActor`, `BlockReceiver`, `BlockRecoveryWorker`, `DataXceiver`, `DataXceiverServer`<br/>*tools:* `Demo`, `MiniDFSCluster` |
+| *common:* `HdfsConfig`, `Log`<br/>*protocol:* `Block`, `BlockLocalPathInfo`, `ClientDatanodeProtocol`, `DataTransferProtocol`, `DatanodeID`, `DatanodeInfo`, `PipelineAck`<br/>*server.datanode:* `BPServiceActor`, `BlockRecoveryWorker`, `BlockSender`, `DataXceiverServer`, `FsDatasetImpl`, `FsVolumeImpl`, `ReplicaInfo`, `StorageLocation`<br/>*server.protocol:* `BlockRecoveryCommand`, `DatanodeProtocol`, `DatanodeStorage`, `InterDatanodeProtocol`, `ReceivedDeletedBlockInfo`, `ReplicaRecoveryInfo` | *server.datanode:* `BPServiceActor`, `BlockReceiver`, `BlockRecoveryWorker`, `DataXceiver`, `DataXceiverServer`<br/>*tools:* `Demo`, `MiniDFSCluster` |
 
 #### `DataXceiver`
 
@@ -1820,7 +1843,7 @@ Corresponds (heavily simplified) to org.apache.hadoop.hdfs.MiniDFSCluster: NameN
 
 | Class | Package | used by |
 |---|---|---|
-| `Block` | `protocol` | 31 |
+| `Block` | `protocol` | 32 |
 | `DatanodeInfo` | `protocol` | 19 |
 | `HdfsConfig` | `common` | 19 |
 | `Log` | `common` | 16 |
@@ -1841,31 +1864,31 @@ Corresponds (heavily simplified) to org.apache.hadoop.hdfs.MiniDFSCluster: NameN
 | Class | Package | uses |
 |---|---|---|
 | `FSNamesystem` | `server.namenode` | 37 |
-| `DataNode` | `server.datanode` | 22 |
+| `DataNode` | `server.datanode` | 23 |
 | `BPServiceActor` | `server.datanode` | 21 |
 | `BlockManager` | `server.blockmanagement` | 21 |
 | `DatanodeManager` | `server.blockmanagement` | 18 |
 | `Demo` | `tools` | 16 |
 | `NameNodeRpcServer` | `server.namenode` | 16 |
 | `FsDatasetImpl` | `server.datanode` | 15 |
+| `DFSClient` | `client` | 13 |
 | `DFSInputStream` | `client` | 13 |
 | `DFSOutputStream` | `client` | 13 |
 | `DataXceiver` | `server.datanode` | 11 |
 | `BlockReceiver` | `server.datanode` | 10 |
 | `BlockRecoveryWorker` | `server.datanode` | 10 |
-| `DFSClient` | `client` | 10 |
 | `FSDirectory` | `server.namenode` | 9 |
 
 ### Package sizes
 
 | Package | Classes | Lines |
 |---|---|---|
-| `client` | 4 | 1067 |
+| `client` | 4 | 1091 |
 | `common` | 6 | 359 |
-| `protocol` | 17 | 806 |
+| `protocol` | 18 | 851 |
 | `server.blockmanagement` | 10 | 1495 |
 | `server.common` | 2 | 80 |
-| `server.datanode` | 12 | 1947 |
+| `server.datanode` | 12 | 1957 |
 | `server.namenode` | 11 | 1948 |
 | `server.protocol` | 12 | 457 |
 | `tools` | 3 | 595 |

@@ -27,7 +27,7 @@
 16. [Tests](#16-tests)
 17. [Glossary](#17-glossary) – all abbreviations (NN, DN, GS, IBR, RBW, UC …)
 
-> The dependencies of **all 77 classes** (package graph, inheritance, graph per package, "uses / used by" per class) are in [`DEPENDENCIES.md`](DEPENDENCIES.md).
+> The dependencies of **all 78 classes** (package graph, inheritance, graph per package, "uses / used by" per class) are in [`DEPENDENCIES.md`](DEPENDENCIES.md).
 
 ---
 
@@ -140,7 +140,7 @@ Details with sequence diagram, wire format and differences from the original: 8.
 
 ### 1.2 Reading path through the code
 
-You don't have to read the 77 classes in order. This path follows **one file through its life**:
+You don't have to read the 78 classes in order. This path follows **one file through its life**:
 create → write → store → confirm → read → failure cases. Each step builds on the previous one.
 Paths relative to `src/main/java/edudfs/`.
 
@@ -255,7 +255,8 @@ edudfs/
     │   ├── StorageType          DISK, SSD, ARCHIVE, RAM_DISK
     │   ├── LocatedBlock(s), HdfsFileStatus, LastBlockWithStatus
     │   ├── ClientProtocol       RPC client → NameNode
-    │   ├── ClientDatanodeProtocol  RPC client → DataNode (visible length of a block being written)
+    │   ├── ClientDatanodeProtocol  RPC client → DataNode (visible length, local path of a replica)
+    │   ├── BlockLocalPathInfo   block file + .meta file of a replica on the DataNode's disk
     │   ├── DataTransferProtocol op codes + headers for the TCP data channel
     │   ├── Packet, PipelineAck  wire formats of the data channel
     │   └── *Exception           AlreadyBeingCreated, RecoveryInProgress, LeaseExpired, FileAlreadyExists
@@ -937,9 +938,12 @@ Command codes (identical to the original):
 | `initReplicaRecovery(RecoveringBlock)` | stop the writer, replica → RUR, returns length/GS/original state (`null` = no replica) |
 | `updateReplicaUnderRecovery(oldBlock, recoveryId, newLength)` | truncate, GS = recoveryId, finalize, IBR to NN |
 
-`ClientDatanodeProtocol` (client → DataNode, RMI on the same ipcPort) has a single method,
-`getReplicaVisibleLength(block)`: the current length of the replica. The client uses it to read the last block
-of a file that is still open (see 8.2).
+`ClientDatanodeProtocol` (client → DataNode, RMI on the same ipcPort):
+
+| Method | Purpose |
+|---|---|
+| `getReplicaVisibleLength(block)` | current length of the replica – the client uses it to read the last block of a file that is still open (see 8.2) |
+| `getBlockLocalPathInfo(block)` | block file and `.meta` file of the replica on the DataNode's disk (`BlockLocalPathInfo`); in the original used for short-circuit reads, here by the EduDFSBase `metasave` to show where the blocks of a WAL or HFile lie (`DFSClient.getBlockLocalPaths`) |
 
 ### 7.4 DataTransferProtocol (TCP)
 

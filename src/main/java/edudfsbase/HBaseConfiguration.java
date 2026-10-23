@@ -103,6 +103,16 @@ public final class HBaseConfiguration {
     /** hbase.regionserver.logroll.period: roll at least this often (original: 1 h). */
     public static final long LOGROLL_PERIOD = getLong("hbase.regionserver.logroll.period", 3600_000);
 
+    // ------------------------------------------------------------------ HFile
+    /**
+     * hfile.index.block.max.size: an index block is closed once its entries reach this size; a root level
+     * larger than this gets another level below it (original: 128 KB). Small here, so that a few thousand
+     * cells already give a multi-level index (B+ tree).
+     */
+    public static final int INDEX_BLOCK_MAX_SIZE = getInt("hfile.index.block.max.size", 512);
+    /** hfile.index.block.min.entries: an index block holds at least this many entries (original: 16). */
+    public static final int INDEX_BLOCK_MIN_ENTRIES = getInt("hfile.index.block.min.entries", 4);
+
     // ------------------------------------------------------- read path
     /** io.storefile.bloom.error.rate: target false positive rate of the Bloom filters (original: 1 %). */
     public static final double BLOOM_ERROR_RATE = getDouble("io.storefile.bloom.error.rate", 0.01);

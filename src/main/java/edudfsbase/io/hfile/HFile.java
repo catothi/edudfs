@@ -1,6 +1,7 @@
 package edudfsbase.io.hfile;
 
 import edudfsbase.Cell;
+import edudfsbase.HBaseConfiguration;
 import edudfsbase.KeyValue;
 import edudfsbase.io.PositionedReadable;
 import edudfsbase.util.BloomFilterChunk;
@@ -74,13 +75,23 @@ public final class HFile {
 
         long getEntries();
 
+        /** Number of data blocks (reads the leaf index blocks once if the index has several levels). */
+        int getDataBlockCount() throws IOException;
+
         HFileBlock readBlock(long offset, boolean cacheBlock, ReadTrace trace) throws IOException;
 
         HFileScanner getScanner(boolean cacheBlocks, ReadTrace trace);
     }
 
     public static Writer getWriter(OutputStream out, String name, int blockSize) {
-        return new HFileWriterImpl(out, name, blockSize);
+        return getWriter(out, name, blockSize, HBaseConfiguration.INDEX_BLOCK_MAX_SIZE,
+                HBaseConfiguration.INDEX_BLOCK_MIN_ENTRIES);
+    }
+
+    /** With explicit hfile.index.block.max.size / hfile.index.block.min.entries (tests). */
+    public static Writer getWriter(OutputStream out, String name, int blockSize, int indexBlockMaxSize,
+                                   int indexBlockMinEntries) {
+        return new HFileWriterImpl(out, name, blockSize, indexBlockMaxSize, indexBlockMinEntries);
     }
 
     public static Reader createReader(String name, PositionedReadable in, LruBlockCache cache) throws IOException {

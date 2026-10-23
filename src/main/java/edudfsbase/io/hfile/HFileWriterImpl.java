@@ -16,10 +16,12 @@ import java.io.OutputStream;
  *
  * append(): the cells are collected in the current data block. Once it has reached the block size
  * (column family attribute BLOCKSIZE), the block is written and its first key goes into the index.
- * close(): last data block, Bloom chunk, then the load-on-open section (index, FileInfo, Bloom
- * meta) and finally the trailer, which points to the load-on-open section.
+ * If the current leaf index chunk is full, it is written right after that data block (IDXLEAF2).
+ * close(): last data block, last leaf index block, Bloom chunk ("scanned block section"); intermediate
+ * index blocks ("non-scanned block section"); root index, meta index, FileInfo, Bloom meta
+ * ("load-on-open section"); finally the trailer, which points to the load-on-open section.
  */
-public class HFileWriterImpl implements HFile.Writer {
+public class HFileWriterImpl implements HFile.Writer, HFileBlockIndex.BlockSink {
 
     private final OutputStream out;
     private final String name;
@@ -37,15 +39,16 @@ public class HFileWriterImpl implements HFile.Writer {
     private long firstDataBlockOffset = -1;
     private long lastDataBlockOffset = -1;
 
-    private final HFileBlockIndex.BlockIndexWriter dataBlockIndexWriter = new HFileBlockIndex.BlockIndexWriter();
+    private final HFileBlockIndex.BlockIndexWriter dataBlockIndexWriter;
     private final HFileInfo fileInfo = new HFileInfo();
     private BloomFilterChunk bloom;
     private boolean closed;
 
-    HFileWriterImpl(OutputStream out, String name, int blockSize) {
+    HFileWriterImpl(OutputStream out, String name, int blockSize, int indexBlockMaxSize, int indexBlockMinEntries) {
         this.out = out;
         this.name = name;
         this.blockSize = blockSize;
+        this.dataBlockIndexWriter = new HFileBlockIndex.BlockIndexWriter(indexBlockMaxSize, indexBlockMinEntries);
     }
 
     @Override
@@ -79,14 +82,23 @@ public class HFileWriterImpl implements HFile.Writer {
             firstDataBlockOffset = pos;
         }
         lastDataBlockOffset = pos;
-        totalUncompressedBytes += b.length;
         write(b);
         blockBody.setLength(0);
+        if (dataBlockIndexWriter.shouldWriteBlock(false)) {
+            dataBlockIndexWriter.writeInlineBlock(this);
+        }
     }
 
-    private void write(byte[] b) throws IOException {
+    @Override
+    public long getPos() {
+        return pos;
+    }
+
+    @Override
+    public void write(byte[] b) throws IOException {
         out.write(b);
         pos += b.length;
+        totalUncompressedBytes += b.length;  // no compression: on disk = uncompressed
     }
 
     @Override
@@ -110,20 +122,24 @@ public class HFileWriterImpl implements HFile.Writer {
             return;
         }
         closed = true;
+        // ---- scanned block section: rest of the data, last leaf index block, Bloom chunk
         finishBlock();
+        if (dataBlockIndexWriter.shouldWriteBlock(true)) {
+            dataBlockIndexWriter.writeInlineBlock(this);
+        }
         long bloomChunkOffset = pos;
         int bloomChunkSize = 0;
         if (bloom != null) {
             byte[] b = HFileBlock.serialize(BlockType.BLOOM_CHUNK, -1, hexLines(bloom.getBytes()));
             bloomChunkSize = b.length;
-            totalUncompressedBytes += b.length;
             write(b);
         }
 
-        // ---- load-on-open section
+        // ---- non-scanned block section (intermediate index blocks) and load-on-open section (root index)
         FixedFileTrailer trailer = new FixedFileTrailer();
-        trailer.loadOnOpenDataOffset = pos;
-        write(HFileBlock.serialize(BlockType.ROOT_INDEX, -1, dataBlockIndexWriter.toBody()));
+        trailer.loadOnOpenDataOffset = dataBlockIndexWriter.writeIndexBlocks(this);
+        // meta block index: a second root index block, empty - EduDFSBase writes no META blocks
+        write(HFileBlock.serialize(BlockType.ROOT_INDEX, -1, ""));
 
         trailer.fileInfoOffset = pos;
         if (lastCell != null) {
@@ -144,7 +160,9 @@ public class HFileWriterImpl implements HFile.Writer {
 
         // ---- trailer
         trailer.dataIndexCount = dataBlockIndexWriter.getNumRootEntries();
-        trailer.totalUncompressedBytes = totalUncompressedBytes;
+        trailer.numDataIndexLevels = dataBlockIndexWriter.getNumLevels();
+        trailer.uncompressedDataIndexSize = dataBlockIndexWriter.getTotalUncompressedSize();
+        trailer.totalUncompressedBytes = totalUncompressedBytes + FixedFileTrailer.TRAILER_SIZE;
         trailer.entryCount = entryCount;
         trailer.firstDataBlockOffset = firstDataBlockOffset;
         trailer.lastDataBlockOffset = lastDataBlockOffset;

@@ -18,6 +18,7 @@ import edudfsbase.util.Bytes;
 import edudfsbase.util.EnvironmentEdgeManager;
 import edudfsbase.wal.FSHLog;
 import edudfs.common.Log;
+import edudfs.protocol.BlockLocalPathInfo;
 
 import java.io.IOException;
 import java.rmi.NotBoundException;
@@ -322,6 +323,7 @@ public class HRegionServer {
         sb.append("  WAL      ").append(wal.getCurrentFileName()).append('\n');
         sb.append(String.format("           %d entries, %d bytes (roll at %d bytes)%n", wal.getCurrentEntries(),
                 wal.getCurrentFileLength(), wal.getLogrollSize()));
+        appendLocalBlockPaths(sb, wal.getCurrentFileName(), "           ");
         for (String s : wal.describeRolledWALs()) {
             sb.append("           rolled: ").append(s).append('\n');
         }
@@ -358,19 +360,42 @@ public class HRegionServer {
                 sb.append(String.format("        HFiles (%d)%s%n", files.size(), files.isEmpty() ? ": -"
                         : " in " + s.getRegionFileSystem().getStoreDir(s.getColumnFamilyName()) + "/:"));
                 if (!files.isEmpty()) {
-                    sb.append(String.format("          %-34s %7s %6s %6s %6s %-6s %-22s %s%n", "name", "bytes", "cells",
-                            "blocks", "seqid", "bloom", "bloom req/neg/fp", "created by"));
+                    sb.append(String.format("          %-34s %7s %6s %6s %6s %6s %-6s %-22s %s%n", "name", "bytes",
+                            "cells", "blocks", "levels", "seqid", "bloom", "bloom req/neg/fp", "created by"));
                 }
                 for (HStoreFile f : files) {
                     StoreFileReader rd = f.getReader();
-                    sb.append(String.format("          %-34s %7d %6d %6d %6d %-6s %-22s %s%n", f.getName(), f.length(),
-                            rd.getEntries(), rd.getHFileReader().getTrailer().getDataIndexCount(),
-                            f.getMaxSequenceId(), rd.getBloomFilterType(), rd.getBloomRequests() + "/"
-                                    + rd.getBloomNegatives() + "/" + rd.getBloomFalsePositives(), f.getCreatedBy()));
+                    int blocks;
+                    try {
+                        blocks = rd.getHFileReader().getDataBlockCount();
+                    } catch (IOException e) {
+                        blocks = -1;
+                    }
+                    sb.append(String.format("          %-34s %7d %6d %6d %6d %6d %-6s %-22s %s%n", f.getName(),
+                            f.length(), rd.getEntries(), blocks,
+                            rd.getHFileReader().getTrailer().getNumDataIndexLevels(), f.getMaxSequenceId(),
+                            rd.getBloomFilterType(), rd.getBloomRequests() + "/" + rd.getBloomNegatives() + "/"
+                                    + rd.getBloomFalsePositives(), f.getCreatedBy()));
+                    appendLocalBlockPaths(sb, f.getPath(), "            ");
                 }
             }
         }
         return sb.toString();
+    }
+
+    /**
+     * EduDFSBase: the replicas of the file's HDFS blocks as files on the DataNodes' disks, ready for cat.
+     * HBase itself only knows the HDFS path; the DataNodes are asked via ClientDatanodeProtocol.
+     */
+    private void appendLocalBlockPaths(StringBuilder sb, String path, String indent) {
+        try {
+            for (BlockLocalPathInfo info : fs.getClient().getBlockLocalPaths(path)) {
+                sb.append(indent).append("replica ").append(info.getBlockPath() != null ? info.getBlockPath()
+                        : info.getBlock().getBlockName() + " (DataNode not reachable)").append('\n');
+            }
+        } catch (IOException e) {
+            sb.append(indent).append("replicas: ").append(e.getMessage()).append('\n');
+        }
     }
 
     /** Starts RegionServer i (port hbase.regionserver.port + i) as a separate process. */

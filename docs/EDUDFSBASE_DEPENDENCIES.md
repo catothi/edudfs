@@ -3,7 +3,7 @@
 > Generated automatically by `docs/gen_dependencies.py` – do not edit by hand.  
 > Regenerate: `./hdfs build && python3 docs/gen_dependencies.py edudfsbase`
 
-**104 classes** in **13 packages**, **582 class dependencies**. Sources: source code analysis + `jdeps` (Bytecode). Inner classes (e.g. `HFileBlockIndex.BlockIndexReader`, `WAL.Entry`) are attributed to their outer class. Package names are given without the prefix `edudfsbase.`; dependencies on EduDFS (`edudfs.*`) are not shown.
+**107 classes** in **13 packages**, **627 class dependencies**. Sources: source code analysis + `jdeps` (Bytecode). Inner classes (e.g. `HFileBlockIndex.BlockIndexReader`, `WAL.Entry`) are attributed to their outer class. Package names are given without the prefix `edudfsbase.`; dependencies on EduDFS (`edudfs.*`) are not shown.
 
 **How to read:** “A → B” means *A uses B* (import, field, parameter, call, inheritance or constant).
 
@@ -24,12 +24,12 @@ flowchart LR
     codec["codec<br/>(1 classes)"]
     fs["fs<br/>(2 classes)"]
     io["io<br/>(2 classes)"]
-    io_hfile["io.hfile<br/>(11 classes)"]
+    io_hfile["io.hfile<br/>(13 classes)"]
     ipc["ipc<br/>(5 classes)"]
     master["master<br/>(7 classes)"]
     regionserver["regionserver<br/>(20 classes)"]
     regionserver_compactions["regionserver.compactions<br/>(4 classes)"]
-    tools["tools<br/>(3 classes)"]
+    tools["tools<br/>(4 classes)"]
     util["util<br/>(6 classes)"]
     wal["wal<br/>(8 classes)"]
     root -- 2 --> client
@@ -45,11 +45,11 @@ flowchart LR
     codec -- 1 --> util
     fs -- 5 --> root
     fs -- 1 --> io
-    io_hfile -- 16 --> root
-    io_hfile -- 5 --> codec
+    io_hfile -- 21 --> root
+    io_hfile -- 6 --> codec
     io_hfile -- 1 --> fs
-    io_hfile -- 5 --> io
-    io_hfile -- 12 --> util
+    io_hfile -- 7 --> io
+    io_hfile -- 14 --> util
     ipc -- 4 --> root
     ipc -- 8 --> client
     ipc -- 1 --> regionserver_compactions
@@ -77,14 +77,14 @@ flowchart LR
     regionserver_compactions -- 1 --> io
     regionserver_compactions -- 10 --> regionserver
     regionserver_compactions -- 3 --> util
-    tools -- 11 --> root
-    tools -- 16 --> client
-    tools -- 1 --> fs
+    tools -- 12 --> root
+    tools -- 29 --> client
+    tools -- 3 --> fs
     tools -- 1 --> io_hfile
     tools -- 3 --> master
-    tools -- 6 --> regionserver
+    tools -- 7 --> regionserver
     tools -- 1 --> regionserver_compactions
-    tools -- 1 --> util
+    tools -- 2 --> util
     tools -- 1 --> wal
     wal -- 15 --> root
     wal -- 2 --> codec
@@ -104,12 +104,12 @@ The number on an edge is the number of class dependencies between the two packag
 | `codec` | 2 |  | · |  |  |  |  |  |  |  |  | 1 |  |
 | `fs` | 5 |  |  | · | 1 |  |  |  |  |  |  |  |  |
 | `io` |  |  |  |  | · |  |  |  |  |  |  |  |  |
-| `io.hfile` | 16 |  | 5 | 1 | 5 | · |  |  |  |  |  | 12 |  |
+| `io.hfile` | 21 |  | 6 | 1 | 7 | · |  |  |  |  |  | 14 |  |
 | `ipc` | 4 | 8 |  |  |  |  | · |  |  | 1 |  |  |  |
 | `master` | 30 | 7 |  | 6 |  | 2 | 7 | · | 1 |  |  | 3 | 1 |
 | `regionserver` | 51 | 20 | 1 | 7 | 5 | 15 | 6 |  | · | 8 |  | 19 | 6 |
 | `regionserver.compactions` | 3 | 1 |  | 1 | 1 |  |  |  | 10 | · |  | 3 |  |
-| `tools` | 11 | 16 |  | 1 |  | 1 |  | 3 | 6 | 1 | · | 1 | 1 |
+| `tools` | 12 | 29 |  | 3 |  | 1 |  | 3 | 7 | 1 | · | 2 | 1 |
 | `util` |  |  |  |  |  |  |  |  |  |  |  | · |  |
 | `wal` | 15 |  | 2 | 6 |  | 6 |  |  |  |  |  | 2 | · |
 
@@ -173,6 +173,7 @@ classDiagram
     Serializable <|.. TimeRange
     HFile <|-- HFileReaderImpl
     HFile <|-- HFileWriterImpl
+    HFileBlockIndex <|-- HFileWriterImpl
     Remote <|.. AdminService
     Remote <|.. ClientService
     Remote <|.. MasterService
@@ -213,7 +214,7 @@ classDiagram
 | `Get` | `Serializable` |
 | `HFileReaderImpl` | `HFile.Reader` |
 | `HFileSystem` | `Closeable` |
-| `HFileWriterImpl` | `HFile.Writer` |
+| `HFileWriterImpl` | `HFile.Writer`, `HFileBlockIndex.BlockSink` |
 | `HRegionLocation` | `Serializable` |
 | `KeyValue` | `Cell`, `Serializable` |
 | `KeyValueHeap` | `KeyValueScanner` |
@@ -520,6 +521,8 @@ flowchart LR
         io_hfile_HFile["HFile"]
         io_hfile_HFileBlock["HFileBlock"]
         io_hfile_HFileBlockIndex["HFileBlockIndex"]
+        io_hfile_HFileBlockMap["HFileBlockMap"]
+        io_hfile_HFileHtmlExporter["HFileHtmlExporter"]
         io_hfile_HFileInfo["HFileInfo"]
         io_hfile_HFilePrettyPrinter["HFilePrettyPrinter"]
         io_hfile_HFileReaderImpl["HFileReaderImpl"]
@@ -553,6 +556,7 @@ flowchart LR
     io_hfile_FixedFileTrailer --> io_hfile_BlockType
     io_hfile_FixedFileTrailer --> io_hfile_HFileBlockIndex
     io_hfile_HFile -.-> Cell
+    io_hfile_HFile -.-> HBaseConfiguration
     io_hfile_HFile -.-> KeyValue
     io_hfile_HFile -.-> io_PositionedReadable
     io_hfile_HFile --> io_hfile_FixedFileTrailer
@@ -569,11 +573,34 @@ flowchart LR
     io_hfile_HFileBlock -.-> codec_KeyValueCodec
     io_hfile_HFileBlock -.-> io_PositionedReadable
     io_hfile_HFileBlock --> io_hfile_BlockType
+    io_hfile_HFileBlock --> io_hfile_HFileBlockIndex
     io_hfile_HFileBlockIndex -.-> Cell
     io_hfile_HFileBlockIndex -.-> CellComparator
     io_hfile_HFileBlockIndex -.-> KeyValue
     io_hfile_HFileBlockIndex -.-> codec_KeyValueCodec
+    io_hfile_HFileBlockIndex --> io_hfile_BlockType
     io_hfile_HFileBlockIndex --> io_hfile_HFileBlock
+    io_hfile_HFileBlockMap -.-> KeyValue
+    io_hfile_HFileBlockMap -.-> io_PositionedReadable
+    io_hfile_HFileBlockMap --> io_hfile_BlockType
+    io_hfile_HFileBlockMap --> io_hfile_FixedFileTrailer
+    io_hfile_HFileBlockMap --> io_hfile_HFileBlock
+    io_hfile_HFileBlockMap --> io_hfile_HFileBlockIndex
+    io_hfile_HFileBlockMap --> io_hfile_HFileReaderImpl
+    io_hfile_HFileBlockMap -.-> util_BloomFilterChunk
+    io_hfile_HFileBlockMap -.-> util_Bytes
+    io_hfile_HFileHtmlExporter -.-> Cell
+    io_hfile_HFileHtmlExporter -.-> HBaseConfiguration
+    io_hfile_HFileHtmlExporter -.-> KeyValue
+    io_hfile_HFileHtmlExporter -.-> codec_KeyValueCodec
+    io_hfile_HFileHtmlExporter -.-> io_PositionedReadable
+    io_hfile_HFileHtmlExporter --> io_hfile_BlockType
+    io_hfile_HFileHtmlExporter --> io_hfile_FixedFileTrailer
+    io_hfile_HFileHtmlExporter --> io_hfile_HFile
+    io_hfile_HFileHtmlExporter --> io_hfile_HFileBlock
+    io_hfile_HFileHtmlExporter --> io_hfile_HFileBlockIndex
+    io_hfile_HFileHtmlExporter --> io_hfile_HFileBlockMap
+    io_hfile_HFileHtmlExporter --> io_hfile_HFileReaderImpl
     io_hfile_HFileInfo --> io_hfile_HFileBlock
     io_hfile_HFileInfo --> io_hfile_HFileBlockIndex
     io_hfile_HFilePrettyPrinter -.-> Cell
@@ -587,6 +614,8 @@ flowchart LR
     io_hfile_HFilePrettyPrinter --> io_hfile_HFile
     io_hfile_HFilePrettyPrinter --> io_hfile_HFileBlock
     io_hfile_HFilePrettyPrinter --> io_hfile_HFileBlockIndex
+    io_hfile_HFilePrettyPrinter --> io_hfile_HFileBlockMap
+    io_hfile_HFilePrettyPrinter --> io_hfile_HFileHtmlExporter
     io_hfile_HFilePrettyPrinter --> io_hfile_HFileInfo
     io_hfile_HFilePrettyPrinter --> io_hfile_HFileReaderImpl
     io_hfile_HFilePrettyPrinter --> io_hfile_LruBlockCache
@@ -1155,6 +1184,7 @@ flowchart LR
         tools_Demo["Demo"]
         tools_HBaseShell["HBaseShell"]
         tools_MiniHBaseCluster["MiniHBaseCluster"]
+        tools_PerformanceEvaluation["PerformanceEvaluation"]
     end
     subgraph root_ext_tools["(root)"]
         Cell["Cell"]
@@ -1184,6 +1214,7 @@ flowchart LR
     end
     subgraph fs_ext_tools["fs"]
         fs_CommonFSUtils["CommonFSUtils"]
+        fs_HFileSystem["HFileSystem"]
     end
     subgraph io_hfile_ext_tools["io.hfile"]
         io_hfile_HFilePrettyPrinter["HFilePrettyPrinter"]
@@ -1223,6 +1254,7 @@ flowchart LR
     tools_Demo -.-> regionserver_HStoreFile
     tools_Demo --> tools_HBaseShell
     tools_Demo --> tools_MiniHBaseCluster
+    tools_Demo --> tools_PerformanceEvaluation
     tools_Demo -.-> wal_WALPrettyPrinter
     tools_HBaseShell -.-> Cell
     tools_HBaseShell -.-> HRegionLocation
@@ -1251,6 +1283,24 @@ flowchart LR
     tools_MiniHBaseCluster -.-> HBaseConfiguration
     tools_MiniHBaseCluster -.-> master_HMaster
     tools_MiniHBaseCluster -.-> regionserver_HRegionServer
+    tools_PerformanceEvaluation -.-> TableName
+    tools_PerformanceEvaluation -.-> client_Admin
+    tools_PerformanceEvaluation -.-> client_ColumnFamilyDescriptor
+    tools_PerformanceEvaluation -.-> client_ColumnFamilyDescriptorBuilder
+    tools_PerformanceEvaluation -.-> client_Connection
+    tools_PerformanceEvaluation -.-> client_ConnectionFactory
+    tools_PerformanceEvaluation -.-> client_Get
+    tools_PerformanceEvaluation -.-> client_Put
+    tools_PerformanceEvaluation -.-> client_Result
+    tools_PerformanceEvaluation -.-> client_ResultScanner
+    tools_PerformanceEvaluation -.-> client_Scan
+    tools_PerformanceEvaluation -.-> client_Table
+    tools_PerformanceEvaluation -.-> client_TableDescriptor
+    tools_PerformanceEvaluation -.-> client_TableDescriptorBuilder
+    tools_PerformanceEvaluation -.-> fs_CommonFSUtils
+    tools_PerformanceEvaluation -.-> fs_HFileSystem
+    tools_PerformanceEvaluation -.-> regionserver_BloomType
+    tools_PerformanceEvaluation -.-> util_Bytes
 ```
 
 ### `util`
@@ -1373,9 +1423,9 @@ Columns: **uses** = outgoing dependencies (fan-out), **used by** = incoming (fan
 
 Corresponds to org.apache.hadoop.hbase.Cell: the smallest unit of data in HBase.
 
-| uses (1) | used by (30) |
+| uses (1) | used by (31) |
 |---|---|
-| *(root):* `KeyValue` | *(root):* `CellComparator`, `KeyValue`<br/>*client:* `Mutation`, `Result`<br/>*codec:* `KeyValueCodec`<br/>*io.hfile:* `HFile`, `HFileBlockIndex`, `HFilePrettyPrinter`, `HFileReaderImpl`, `HFileScanner`, `HFileWriterImpl`<br/>*master:* `HMaster`<br/>*regionserver:* `DefaultMemStore`, `HRegion`, `HRegionServer`, `HStore`, `KeyValueHeap`, `KeyValueScanner`, `RSRpcServices`, `RegionScanner`, `ScanQueryMatcher`, `SegmentScanner`, `StoreFileScanner`, `StoreFileWriter`, `StoreScanner`<br/>*regionserver.compactions:* `Compactor`<br/>*tools:* `HBaseShell`<br/>*wal:* `TextLogWriter`, `WALEdit`, `WALPrettyPrinter` |
+| *(root):* `KeyValue` | *(root):* `CellComparator`, `KeyValue`<br/>*client:* `Mutation`, `Result`<br/>*codec:* `KeyValueCodec`<br/>*io.hfile:* `HFile`, `HFileBlockIndex`, `HFileHtmlExporter`, `HFilePrettyPrinter`, `HFileReaderImpl`, `HFileScanner`, `HFileWriterImpl`<br/>*master:* `HMaster`<br/>*regionserver:* `DefaultMemStore`, `HRegion`, `HRegionServer`, `HStore`, `KeyValueHeap`, `KeyValueScanner`, `RSRpcServices`, `RegionScanner`, `ScanQueryMatcher`, `SegmentScanner`, `StoreFileScanner`, `StoreFileWriter`, `StoreScanner`<br/>*regionserver.compactions:* `Compactor`<br/>*tools:* `HBaseShell`<br/>*wal:* `TextLogWriter`, `WALEdit`, `WALPrettyPrinter` |
 
 #### `CellComparator`
 
@@ -1403,13 +1453,13 @@ Corresponds to org.apache.hadoop.hbase.DoNotRetryIOException: the client must no
 
 #### `HBaseConfiguration`
 
-*class* · [`src/main/java/edudfsbase/HBaseConfiguration.java`](../src/main/java/edudfsbase/HBaseConfiguration.java) · 135 lines
+*class* · [`src/main/java/edudfsbase/HBaseConfiguration.java`](../src/main/java/edudfsbase/HBaseConfiguration.java) · 145 lines
 
 Corresponds to org.apache.hadoop.hbase.HBaseConfiguration: reads conf/hbase-site.xml (from the same configuration directory as core-site.xml and hdfs-site.xml).
 
-| uses (1) | used by (14) |
+| uses (1) | used by (16) |
 |---|---|
-| *(root):* `HConstants` | *client:* `Connection`, `Scan`<br/>*fs:* `CommonFSUtils`<br/>*io.hfile:* `HFilePrettyPrinter`<br/>*master:* `HMaster`, `ServerManager`<br/>*regionserver:* `HRegion`, `HRegionServer`, `RSRpcServices`, `StoreFileWriter`<br/>*regionserver.compactions:* `RatioBasedCompactionPolicy`<br/>*tools:* `Demo`, `MiniHBaseCluster`<br/>*wal:* `FSHLog` |
+| *(root):* `HConstants` | *client:* `Connection`, `Scan`<br/>*fs:* `CommonFSUtils`<br/>*io.hfile:* `HFile`, `HFileHtmlExporter`, `HFilePrettyPrinter`<br/>*master:* `HMaster`, `ServerManager`<br/>*regionserver:* `HRegion`, `HRegionServer`, `RSRpcServices`, `StoreFileWriter`<br/>*regionserver.compactions:* `RatioBasedCompactionPolicy`<br/>*tools:* `Demo`, `MiniHBaseCluster`<br/>*wal:* `FSHLog` |
 
 #### `HConstants`
 
@@ -1443,9 +1493,9 @@ Corresponds to org.apache.hadoop.hbase.KeyValue, the standard implementation of 
 
 **inner types:** `Type`
 
-| uses (6) | used by (25) |
+| uses (6) | used by (27) |
 |---|---|
-| *(root):* `Cell`, `CellComparator`, `HConstants`<br/>*client:* `Delete`, `Put`<br/>*util:* `Bytes` | *(root):* `Cell`, `CellComparator`<br/>*client:* `Delete`, `Mutation`, `Put`, `Result`<br/>*codec:* `KeyValueCodec`<br/>*io.hfile:* `HFile`, `HFileBlock`, `HFileBlockIndex`, `HFilePrettyPrinter`, `HFileReaderImpl`, `HFileWriterImpl`<br/>*master:* `HMaster`<br/>*regionserver:* `DefaultMemStore`, `HRegion`, `HStore`, `ScanQueryMatcher`, `StoreFileReader`, `StoreFileWriter`, `StoreScanner`<br/>*regionserver.compactions:* `Compactor`<br/>*tools:* `HBaseShell`<br/>*wal:* `TextLogReader`, `WALPrettyPrinter` |
+| *(root):* `Cell`, `CellComparator`, `HConstants`<br/>*client:* `Delete`, `Put`<br/>*util:* `Bytes` | *(root):* `Cell`, `CellComparator`<br/>*client:* `Delete`, `Mutation`, `Put`, `Result`<br/>*codec:* `KeyValueCodec`<br/>*io.hfile:* `HFile`, `HFileBlock`, `HFileBlockIndex`, `HFileBlockMap`, `HFileHtmlExporter`, `HFilePrettyPrinter`, `HFileReaderImpl`, `HFileWriterImpl`<br/>*master:* `HMaster`<br/>*regionserver:* `DefaultMemStore`, `HRegion`, `HStore`, `ScanQueryMatcher`, `StoreFileReader`, `StoreFileWriter`, `StoreScanner`<br/>*regionserver.compactions:* `Compactor`<br/>*tools:* `HBaseShell`<br/>*wal:* `TextLogReader`, `WALPrettyPrinter` |
 
 #### `NoSuchColumnFamilyException`
 
@@ -1527,9 +1577,9 @@ Corresponds to org.apache.hadoop.hbase.TableName: namespace + table name ("ns:t"
 
 **extends / implements:** `Serializable`, `Comparable`
 
-| uses (0) | used by (22) |
+| uses (0) | used by (23) |
 |---|---|
-| – | *(root):* `RegionInfo`<br/>*client:* `Admin`, `Connection`, `ResultScanner`, `Table`, `TableDescriptor`, `TableDescriptorBuilder`<br/>*fs:* `CommonFSUtils`<br/>*ipc:* `MasterService`<br/>*master:* `AssignmentManager`, `HMaster`, `MasterFileSystem`, `MasterRpcServices`<br/>*regionserver:* `HRegion`, `HRegionServer`, `HStore`<br/>*tools:* `HBaseShell`<br/>*wal:* `TextLogReader`, `TextLogWriter`, `WALKeyImpl`, `WALPrettyPrinter`, `WALSplitter` |
+| – | *(root):* `RegionInfo`<br/>*client:* `Admin`, `Connection`, `ResultScanner`, `Table`, `TableDescriptor`, `TableDescriptorBuilder`<br/>*fs:* `CommonFSUtils`<br/>*ipc:* `MasterService`<br/>*master:* `AssignmentManager`, `HMaster`, `MasterFileSystem`, `MasterRpcServices`<br/>*regionserver:* `HRegion`, `HRegionServer`, `HStore`<br/>*tools:* `HBaseShell`, `PerformanceEvaluation`<br/>*wal:* `TextLogReader`, `TextLogWriter`, `WALKeyImpl`, `WALPrettyPrinter`, `WALSplitter` |
 
 #### `TableNotDisabledException`
 
@@ -1601,9 +1651,9 @@ Corresponds to org.apache.hadoop.hbase.client.Admin (HBaseAdmin): administration
 
 **extends / implements:** `Closeable`
 
-| uses (10) | used by (2) |
+| uses (10) | used by (3) |
 |---|---|
-| *(root):* `HRegionLocation`, `RegionInfo`, `ServerName`, `TableName`<br/>*client:* `Connection`, `Result`, `TableDescriptor`<br/>*ipc:* `AdminService`, `MasterService`<br/>*regionserver.compactions:* `CompactionRecord` | *client:* `Connection`<br/>*tools:* `HBaseShell` |
+| *(root):* `HRegionLocation`, `RegionInfo`, `ServerName`, `TableName`<br/>*client:* `Connection`, `Result`, `TableDescriptor`<br/>*ipc:* `AdminService`, `MasterService`<br/>*regionserver.compactions:* `CompactionRecord` | *client:* `Connection`<br/>*tools:* `HBaseShell`, `PerformanceEvaluation` |
 
 #### `ColumnFamilyDescriptor`
 
@@ -1613,9 +1663,9 @@ Corresponds to org.apache.hadoop.hbase.client.ColumnFamilyDescriptor: the settin
 
 **extends / implements:** `Serializable`
 
-| uses (5) | used by (9) |
+| uses (5) | used by (10) |
 |---|---|
-| *(root):* `HConstants`<br/>*client:* `ColumnFamilyDescriptorBuilder`<br/>*io.hfile:* `HFileBlockIndex`<br/>*regionserver:* `BloomType`<br/>*util:* `Bytes` | *client:* `ColumnFamilyDescriptorBuilder`, `TableDescriptor`, `TableDescriptorBuilder`<br/>*master:* `HMaster`<br/>*regionserver:* `HRegion`, `HStore`, `StoreFileWriter`<br/>*regionserver.compactions:* `Compactor`<br/>*tools:* `HBaseShell` |
+| *(root):* `HConstants`<br/>*client:* `ColumnFamilyDescriptorBuilder`<br/>*io.hfile:* `HFileBlockIndex`<br/>*regionserver:* `BloomType`<br/>*util:* `Bytes` | *client:* `ColumnFamilyDescriptorBuilder`, `TableDescriptor`, `TableDescriptorBuilder`<br/>*master:* `HMaster`<br/>*regionserver:* `HRegion`, `HStore`, `StoreFileWriter`<br/>*regionserver.compactions:* `Compactor`<br/>*tools:* `HBaseShell`, `PerformanceEvaluation` |
 
 #### `ColumnFamilyDescriptorBuilder`
 
@@ -1623,13 +1673,13 @@ Corresponds to org.apache.hadoop.hbase.client.ColumnFamilyDescriptor: the settin
 
 Corresponds to org.apache.hadoop.hbase.client.ColumnFamilyDescriptorBuilder.
 
-| uses (4) | used by (2) |
+| uses (4) | used by (3) |
 |---|---|
-| *(root):* `HConstants`<br/>*client:* `ColumnFamilyDescriptor`<br/>*regionserver:* `BloomType`<br/>*util:* `Bytes` | *client:* `ColumnFamilyDescriptor`<br/>*tools:* `HBaseShell` |
+| *(root):* `HConstants`<br/>*client:* `ColumnFamilyDescriptor`<br/>*regionserver:* `BloomType`<br/>*util:* `Bytes` | *client:* `ColumnFamilyDescriptor`<br/>*tools:* `HBaseShell`, `PerformanceEvaluation` |
 
 #### `Connection`
 
-*class* · [`src/main/java/edudfsbase/client/Connection.java`](../src/main/java/edudfsbase/client/Connection.java) · 203 lines
+*class* · [`src/main/java/edudfsbase/client/Connection.java`](../src/main/java/edudfsbase/client/Connection.java) · 219 lines
 
 Corresponds to org.apache.hadoop.hbase.client.Connection (ConnectionImplementation): the client's connection to the cluster. Heavyweight - create once, share, close …
 
@@ -1637,9 +1687,9 @@ Corresponds to org.apache.hadoop.hbase.client.Connection (ConnectionImplementati
 
 **inner types:** `Callable`, `RegionCallable`
 
-| uses (15) | used by (6) |
+| uses (15) | used by (7) |
 |---|---|
-| *(root):* `DoNotRetryIOException`, `HBaseConfiguration`, `HConstants`, `HRegionLocation`, `NotServingRegionException`, `RegionInfo`, `ServerName`, `TableName`<br/>*client:* `Admin`, `RetriesExhaustedException`, `Table`<br/>*ipc:* `AdminService`, `ClientService`, `MasterService`<br/>*util:* `Bytes` | *client:* `Admin`, `ConnectionFactory`, `ResultScanner`, `Table`<br/>*tools:* `Demo`, `HBaseShell` |
+| *(root):* `DoNotRetryIOException`, `HBaseConfiguration`, `HConstants`, `HRegionLocation`, `NotServingRegionException`, `RegionInfo`, `ServerName`, `TableName`<br/>*client:* `Admin`, `RetriesExhaustedException`, `Table`<br/>*ipc:* `AdminService`, `ClientService`, `MasterService`<br/>*util:* `Bytes` | *client:* `Admin`, `ConnectionFactory`, `ResultScanner`, `Table`<br/>*tools:* `Demo`, `HBaseShell`, `PerformanceEvaluation` |
 
 #### `ConnectionFactory`
 
@@ -1647,9 +1697,9 @@ Corresponds to org.apache.hadoop.hbase.client.Connection (ConnectionImplementati
 
 Corresponds to org.apache.hadoop.hbase.client.ConnectionFactory. The address of the master comes from hbase-site.xml (original: the client finds everything via the …
 
-| uses (1) | used by (2) |
+| uses (1) | used by (3) |
 |---|---|
-| *client:* `Connection` | *tools:* `Demo`, `HBaseShell` |
+| *client:* `Connection` | *tools:* `Demo`, `HBaseShell`, `PerformanceEvaluation` |
 
 #### `Delete`
 
@@ -1671,9 +1721,9 @@ Corresponds to org.apache.hadoop.hbase.client.Get: reads ONE row (optionally onl
 
 **extends / implements:** `Serializable`
 
-| uses (2) | used by (6) |
+| uses (2) | used by (7) |
 |---|---|
-| *io:* `TimeRange`<br/>*util:* `Bytes` | *client:* `Scan`, `Table`<br/>*ipc:* `ClientService`<br/>*regionserver:* `HRegion`, `RSRpcServices`<br/>*tools:* `HBaseShell` |
+| *io:* `TimeRange`<br/>*util:* `Bytes` | *client:* `Scan`, `Table`<br/>*ipc:* `ClientService`<br/>*regionserver:* `HRegion`, `RSRpcServices`<br/>*tools:* `HBaseShell`, `PerformanceEvaluation` |
 
 #### `Mutation`
 
@@ -1695,9 +1745,9 @@ Corresponds to org.apache.hadoop.hbase.client.Put: writes cells into one row. Wi
 
 **extends / implements:** `Mutation`
 
-| uses (3) | used by (4) |
+| uses (3) | used by (5) |
 |---|---|
-| *(root):* `HConstants`, `KeyValue`<br/>*client:* `Mutation` | *(root):* `KeyValue`<br/>*client:* `Table`<br/>*regionserver:* `StoreFileWriter`<br/>*tools:* `HBaseShell` |
+| *(root):* `HConstants`, `KeyValue`<br/>*client:* `Mutation` | *(root):* `KeyValue`<br/>*client:* `Table`<br/>*regionserver:* `StoreFileWriter`<br/>*tools:* `HBaseShell`, `PerformanceEvaluation` |
 
 #### `Result`
 
@@ -1707,9 +1757,9 @@ Corresponds to org.apache.hadoop.hbase.client.Result: the cells of ONE row, sort
 
 **extends / implements:** `Serializable`
 
-| uses (3) | used by (11) |
+| uses (3) | used by (12) |
 |---|---|
-| *(root):* `Cell`, `KeyValue`<br/>*util:* `Bytes` | *client:* `Admin`, `ResultScanner`, `Table`<br/>*ipc:* `ClientService`, `MasterService`, `ScanResponse`<br/>*master:* `HMaster`, `MasterRpcServices`<br/>*regionserver:* `HRegion`, `RSRpcServices`<br/>*tools:* `HBaseShell` |
+| *(root):* `Cell`, `KeyValue`<br/>*util:* `Bytes` | *client:* `Admin`, `ResultScanner`, `Table`<br/>*ipc:* `ClientService`, `MasterService`, `ScanResponse`<br/>*master:* `HMaster`, `MasterRpcServices`<br/>*regionserver:* `HRegion`, `RSRpcServices`<br/>*tools:* `HBaseShell`, `PerformanceEvaluation` |
 
 #### `ResultScanner`
 
@@ -1719,9 +1769,9 @@ Corresponds to org.apache.hadoop.hbase.client.ResultScanner (ClientScanner): ite
 
 **extends / implements:** `Closeable`, `Iterable`
 
-| uses (9) | used by (2) |
+| uses (9) | used by (3) |
 |---|---|
-| *(root):* `HRegionLocation`, `RegionInfo`, `TableName`<br/>*client:* `Connection`, `Result`, `Scan`<br/>*ipc:* `ClientService`, `ScanResponse`<br/>*util:* `Bytes` | *client:* `Table`<br/>*tools:* `HBaseShell` |
+| *(root):* `HRegionLocation`, `RegionInfo`, `TableName`<br/>*client:* `Connection`, `Result`, `Scan`<br/>*ipc:* `ClientService`, `ScanResponse`<br/>*util:* `Bytes` | *client:* `Table`<br/>*tools:* `HBaseShell`, `PerformanceEvaluation` |
 
 #### `RetriesExhaustedException`
 
@@ -1743,9 +1793,9 @@ Corresponds to org.apache.hadoop.hbase.client.Scan: reads rows in key order from
 
 **extends / implements:** `Serializable`
 
-| uses (5) | used by (10) |
+| uses (5) | used by (11) |
 |---|---|
-| *(root):* `HBaseConfiguration`, `HConstants`<br/>*client:* `Get`<br/>*io:* `TimeRange`<br/>*util:* `Bytes` | *client:* `ResultScanner`, `Table`<br/>*ipc:* `ClientService`<br/>*regionserver:* `HRegion`, `HStore`, `RSRpcServices`, `RegionScanner`, `StoreFileReader`, `StoreFileScanner`<br/>*tools:* `HBaseShell` |
+| *(root):* `HBaseConfiguration`, `HConstants`<br/>*client:* `Get`<br/>*io:* `TimeRange`<br/>*util:* `Bytes` | *client:* `ResultScanner`, `Table`<br/>*ipc:* `ClientService`<br/>*regionserver:* `HRegion`, `HStore`, `RSRpcServices`, `RegionScanner`, `StoreFileReader`, `StoreFileScanner`<br/>*tools:* `HBaseShell`, `PerformanceEvaluation` |
 
 #### `Table`
 
@@ -1755,9 +1805,9 @@ Corresponds to org.apache.hadoop.hbase.client.Table (HTable): the data operation
 
 **extends / implements:** `Closeable`
 
-| uses (12) | used by (2) |
+| uses (12) | used by (3) |
 |---|---|
-| *(root):* `HRegionLocation`, `RegionInfo`, `TableName`<br/>*client:* `Connection`, `Delete`, `Get`, `Mutation`, `Put`, `Result`, `ResultScanner`, `Scan`<br/>*ipc:* `ClientService` | *client:* `Connection`<br/>*tools:* `HBaseShell` |
+| *(root):* `HRegionLocation`, `RegionInfo`, `TableName`<br/>*client:* `Connection`, `Delete`, `Get`, `Mutation`, `Put`, `Result`, `ResultScanner`, `Scan`<br/>*ipc:* `ClientService` | *client:* `Connection`<br/>*tools:* `HBaseShell`, `PerformanceEvaluation` |
 
 #### `TableDescriptor`
 
@@ -1767,9 +1817,9 @@ Corresponds to org.apache.hadoop.hbase.client.TableDescriptor: name + column fam
 
 **extends / implements:** `Serializable`
 
-| uses (4) | used by (12) |
+| uses (4) | used by (13) |
 |---|---|
-| *(root):* `TableName`<br/>*client:* `ColumnFamilyDescriptor`<br/>*io.hfile:* `HFileBlockIndex`<br/>*util:* `Bytes` | *client:* `Admin`, `TableDescriptorBuilder`<br/>*ipc:* `AdminService`, `MasterService`<br/>*master:* `AssignmentManager`, `HMaster`, `MasterFileSystem`, `MasterRpcServices`<br/>*regionserver:* `HRegion`, `HRegionServer`, `RSRpcServices`<br/>*tools:* `HBaseShell` |
+| *(root):* `TableName`<br/>*client:* `ColumnFamilyDescriptor`<br/>*io.hfile:* `HFileBlockIndex`<br/>*util:* `Bytes` | *client:* `Admin`, `TableDescriptorBuilder`<br/>*ipc:* `AdminService`, `MasterService`<br/>*master:* `AssignmentManager`, `HMaster`, `MasterFileSystem`, `MasterRpcServices`<br/>*regionserver:* `HRegion`, `HRegionServer`, `RSRpcServices`<br/>*tools:* `HBaseShell`, `PerformanceEvaluation` |
 
 #### `TableDescriptorBuilder`
 
@@ -1777,9 +1827,9 @@ Corresponds to org.apache.hadoop.hbase.client.TableDescriptor: name + column fam
 
 Corresponds to org.apache.hadoop.hbase.client.TableDescriptorBuilder.
 
-| uses (3) | used by (1) |
+| uses (3) | used by (2) |
 |---|---|
-| *(root):* `TableName`<br/>*client:* `ColumnFamilyDescriptor`, `TableDescriptor` | *tools:* `HBaseShell` |
+| *(root):* `TableName`<br/>*client:* `ColumnFamilyDescriptor`, `TableDescriptor` | *tools:* `HBaseShell`, `PerformanceEvaluation` |
 
 ### Package `codec`
 
@@ -1789,9 +1839,9 @@ Corresponds to org.apache.hadoop.hbase.client.TableDescriptorBuilder.
 
 Corresponds to org.apache.hadoop.hbase.codec.KeyValueCodec: how a cell is written to a file.
 
-| uses (3) | used by (8) |
+| uses (3) | used by (9) |
 |---|---|
-| *(root):* `Cell`, `KeyValue`<br/>*util:* `Bytes` | *io.hfile:* `HFileBlock`, `HFileBlockIndex`, `HFilePrettyPrinter`, `HFileReaderImpl`, `HFileWriterImpl`<br/>*regionserver:* `HRegionServer`<br/>*wal:* `TextLogReader`, `TextLogWriter` |
+| *(root):* `Cell`, `KeyValue`<br/>*util:* `Bytes` | *io.hfile:* `HFileBlock`, `HFileBlockIndex`, `HFileHtmlExporter`, `HFilePrettyPrinter`, `HFileReaderImpl`, `HFileWriterImpl`<br/>*regionserver:* `HRegionServer`<br/>*wal:* `TextLogReader`, `TextLogWriter` |
 
 ### Package `fs`
 
@@ -1801,9 +1851,9 @@ Corresponds to org.apache.hadoop.hbase.codec.KeyValueCodec: how a cell is writte
 
 Corresponds to org.apache.hadoop.hbase.util.CommonFSUtils (+ HFileArchiveUtil, AbstractFSWALProvider): where what lies in HDFS. The layout is the original one:
 
-| uses (5) | used by (9) |
+| uses (5) | used by (10) |
 |---|---|
-| *(root):* `HBaseConfiguration`, `HConstants`, `RegionInfo`, `ServerName`, `TableName` | *master:* `HMaster`, `MasterFileSystem`, `ServerCrashProcedure`<br/>*regionserver:* `HRegionFileSystem`, `HStoreFile`<br/>*tools:* `Demo`<br/>*wal:* `FSHLog`, `WALPrettyPrinter`, `WALSplitter` |
+| *(root):* `HBaseConfiguration`, `HConstants`, `RegionInfo`, `ServerName`, `TableName` | *master:* `HMaster`, `MasterFileSystem`, `ServerCrashProcedure`<br/>*regionserver:* `HRegionFileSystem`, `HStoreFile`<br/>*tools:* `Demo`, `PerformanceEvaluation`<br/>*wal:* `FSHLog`, `WALPrettyPrinter`, `WALSplitter` |
 
 #### `HFileSystem`
 
@@ -1813,9 +1863,9 @@ Corresponds to org.apache.hadoop.hbase.fs.HFileSystem: the HDFS client of a mast
 
 **extends / implements:** `Closeable`
 
-| uses (1) | used by (13) |
+| uses (1) | used by (14) |
 |---|---|
-| *io:* `PositionedReadable` | *io.hfile:* `HFilePrettyPrinter`<br/>*master:* `HMaster`, `MasterFileSystem`, `ServerCrashProcedure`<br/>*regionserver:* `HRegion`, `HRegionFileSystem`, `HRegionServer`, `HStore`, `HStoreFile`<br/>*regionserver.compactions:* `Compactor`<br/>*wal:* `FSHLog`, `WALPrettyPrinter`, `WALSplitter` |
+| *io:* `PositionedReadable` | *io.hfile:* `HFilePrettyPrinter`<br/>*master:* `HMaster`, `MasterFileSystem`, `ServerCrashProcedure`<br/>*regionserver:* `HRegion`, `HRegionFileSystem`, `HRegionServer`, `HStore`, `HStoreFile`<br/>*regionserver.compactions:* `Compactor`<br/>*tools:* `PerformanceEvaluation`<br/>*wal:* `FSHLog`, `WALPrettyPrinter`, `WALSplitter` |
 
 ### Package `io`
 
@@ -1827,9 +1877,9 @@ Corresponds to org.apache.hadoop.fs.PositionedReadable (+ FSDataInputStreamWrapp
 
 **extends / implements:** `Closeable`
 
-| uses (0) | used by (7) |
+| uses (0) | used by (9) |
 |---|---|
-| – | *fs:* `HFileSystem`<br/>*io.hfile:* `FixedFileTrailer`, `HFile`, `HFileBlock`, `HFilePrettyPrinter`, `HFileReaderImpl`<br/>*regionserver:* `HStoreFile` |
+| – | *fs:* `HFileSystem`<br/>*io.hfile:* `FixedFileTrailer`, `HFile`, `HFileBlock`, `HFileBlockMap`, `HFileHtmlExporter`, `HFilePrettyPrinter`, `HFileReaderImpl`<br/>*regionserver:* `HStoreFile` |
 
 #### `TimeRange`
 
@@ -1847,57 +1897,79 @@ Corresponds to org.apache.hadoop.hbase.io.TimeRange: [minStamp, maxStamp) - min 
 
 #### `BlockType`
 
-*enum* · [`src/main/java/edudfsbase/io/hfile/BlockType.java`](../src/main/java/edudfsbase/io/hfile/BlockType.java) · 46 lines
+*enum* · [`src/main/java/edudfsbase/io/hfile/BlockType.java`](../src/main/java/edudfsbase/io/hfile/BlockType.java) · 52 lines
 
 Corresponds to org.apache.hadoop.hbase.io.hfile.BlockType: every block of an HFile begins with an 8-byte "magic" that names its type. The magics are the original …
 
-| uses (0) | used by (5) |
+| uses (0) | used by (8) |
 |---|---|
-| – | *io.hfile:* `FixedFileTrailer`, `HFileBlock`, `HFilePrettyPrinter`, `HFileReaderImpl`, `HFileWriterImpl` |
+| – | *io.hfile:* `FixedFileTrailer`, `HFileBlock`, `HFileBlockIndex`, `HFileBlockMap`, `HFileHtmlExporter`, `HFilePrettyPrinter`, `HFileReaderImpl`, `HFileWriterImpl` |
 
 #### `FixedFileTrailer`
 
-*class* · [`src/main/java/edudfsbase/io/hfile/FixedFileTrailer.java`](../src/main/java/edudfsbase/io/hfile/FixedFileTrailer.java) · 127 lines
+*class* · [`src/main/java/edudfsbase/io/hfile/FixedFileTrailer.java`](../src/main/java/edudfsbase/io/hfile/FixedFileTrailer.java) · 147 lines
 
 Corresponds to org.apache.hadoop.hbase.io.hfile.FixedFileTrailer: the last #TRAILER_SIZE bytes of every HFile.
 
-| uses (3) | used by (5) |
+| uses (3) | used by (7) |
 |---|---|
-| *io:* `PositionedReadable`<br/>*io.hfile:* `BlockType`, `HFileBlockIndex` | *io.hfile:* `HFile`, `HFilePrettyPrinter`, `HFileReaderImpl`, `HFileWriterImpl`<br/>*regionserver:* `HRegionServer` |
+| *io:* `PositionedReadable`<br/>*io.hfile:* `BlockType`, `HFileBlockIndex` | *io.hfile:* `HFile`, `HFileBlockMap`, `HFileHtmlExporter`, `HFilePrettyPrinter`, `HFileReaderImpl`, `HFileWriterImpl`<br/>*regionserver:* `HRegionServer` |
 
 #### `HFile`
 
-*class* · [`src/main/java/edudfsbase/io/hfile/HFile.java`](../src/main/java/edudfsbase/io/hfile/HFile.java) · 89 lines
+*class* · [`src/main/java/edudfsbase/io/hfile/HFile.java`](../src/main/java/edudfsbase/io/hfile/HFile.java) · 100 lines
 
 Corresponds to org.apache.hadoop.hbase.io.hfile.HFile: the file format in which HBase stores its data in HDFS. An HFile is written ONCE, sorted, and never changed …
 
 **inner types:** `Reader`, `Writer`
 
-| uses (13) | used by (9) |
+| uses (14) | used by (10) |
 |---|---|
-| *(root):* `Cell`, `KeyValue`<br/>*io:* `PositionedReadable`<br/>*io.hfile:* `FixedFileTrailer`, `HFileBlock`, `HFileBlockIndex`, `HFileInfo`, `HFileReaderImpl`, `HFileScanner`, `HFileWriterImpl`, `LruBlockCache`<br/>*util:* `BloomFilterChunk`, `ReadTrace` | *io.hfile:* `HFilePrettyPrinter`, `HFileReaderImpl`, `HFileWriterImpl`<br/>*regionserver:* `HRegionServer`, `HStoreFile`, `StoreFileReader`, `StoreFileScanner`, `StoreFileWriter`<br/>*wal:* `TextLogReader` |
+| *(root):* `Cell`, `HBaseConfiguration`, `KeyValue`<br/>*io:* `PositionedReadable`<br/>*io.hfile:* `FixedFileTrailer`, `HFileBlock`, `HFileBlockIndex`, `HFileInfo`, `HFileReaderImpl`, `HFileScanner`, `HFileWriterImpl`, `LruBlockCache`<br/>*util:* `BloomFilterChunk`, `ReadTrace` | *io.hfile:* `HFileHtmlExporter`, `HFilePrettyPrinter`, `HFileReaderImpl`, `HFileWriterImpl`<br/>*regionserver:* `HRegionServer`, `HStoreFile`, `StoreFileReader`, `StoreFileScanner`, `StoreFileWriter`<br/>*wal:* `TextLogReader` |
 
 #### `HFileBlock`
 
-*class* · [`src/main/java/edudfsbase/io/hfile/HFileBlock.java`](../src/main/java/edudfsbase/io/hfile/HFileBlock.java) · 161 lines
+*class* · [`src/main/java/edudfsbase/io/hfile/HFileBlock.java`](../src/main/java/edudfsbase/io/hfile/HFileBlock.java) · 170 lines
 
 Corresponds to org.apache.hadoop.hbase.io.hfile.HFileBlock: the unit in which an HFile is read (and cached in the BlockCache).
 
-| uses (4) | used by (7) |
+| uses (5) | used by (9) |
 |---|---|
-| *(root):* `KeyValue`<br/>*codec:* `KeyValueCodec`<br/>*io:* `PositionedReadable`<br/>*io.hfile:* `BlockType` | *io.hfile:* `HFile`, `HFileBlockIndex`, `HFileInfo`, `HFilePrettyPrinter`, `HFileReaderImpl`, `HFileWriterImpl`, `LruBlockCache` |
+| *(root):* `KeyValue`<br/>*codec:* `KeyValueCodec`<br/>*io:* `PositionedReadable`<br/>*io.hfile:* `BlockType`, `HFileBlockIndex` | *io.hfile:* `HFile`, `HFileBlockIndex`, `HFileBlockMap`, `HFileHtmlExporter`, `HFileInfo`, `HFilePrettyPrinter`, `HFileReaderImpl`, `HFileWriterImpl`, `LruBlockCache` |
 
 #### `HFileBlockIndex`
 
-*class* · [`src/main/java/edudfsbase/io/hfile/HFileBlockIndex.java`](../src/main/java/edudfsbase/io/hfile/HFileBlockIndex.java) · 126 lines
+*class* · [`src/main/java/edudfsbase/io/hfile/HFileBlockIndex.java`](../src/main/java/edudfsbase/io/hfile/HFileBlockIndex.java) · 368 lines
 
-Corresponds to org.apache.hadoop.hbase.io.hfile.HFileBlockIndex: the data block index.
+Corresponds to org.apache.hadoop.hbase.io.hfile.HFileBlockIndex: the data block index, a B+ tree over the data blocks.
 
-**inner types:** `BlockIndexReader`, `BlockIndexWriter`, `Entry`
+**inner types:** `BlockIndexChunk`, `BlockIndexReader`, `BlockIndexWriter`, `BlockSink`, `Entry`
 
-| uses (5) | used by (17) |
+| uses (6) | used by (20) |
 |---|---|
-| *(root):* `Cell`, `CellComparator`, `KeyValue`<br/>*codec:* `KeyValueCodec`<br/>*io.hfile:* `HFileBlock` | *client:* `ColumnFamilyDescriptor`, `TableDescriptor`<br/>*io.hfile:* `FixedFileTrailer`, `HFile`, `HFileInfo`, `HFilePrettyPrinter`, `HFileReaderImpl`, `HFileWriterImpl`, `LruBlockCache`<br/>*master:* `HMaster`, `ServerManager`<br/>*regionserver:* `HRegion`<br/>*wal:* `FSHLog`, `TextLogReader`, `TextLogWriter`, `WALPrettyPrinter`, `WALSplitter` |
+| *(root):* `Cell`, `CellComparator`, `KeyValue`<br/>*codec:* `KeyValueCodec`<br/>*io.hfile:* `BlockType`, `HFileBlock` | *client:* `ColumnFamilyDescriptor`, `TableDescriptor`<br/>*io.hfile:* `FixedFileTrailer`, `HFile`, `HFileBlock`, `HFileBlockMap`, `HFileHtmlExporter`, `HFileInfo`, `HFilePrettyPrinter`, `HFileReaderImpl`, `HFileWriterImpl`, `LruBlockCache`<br/>*master:* `HMaster`, `ServerManager`<br/>*regionserver:* `HRegion`<br/>*wal:* `FSHLog`, `TextLogReader`, `TextLogWriter`, `WALPrettyPrinter`, `WALSplitter` |
+
+#### `HFileBlockMap`
+
+*class* · [`src/main/java/edudfsbase/io/hfile/HFileBlockMap.java`](../src/main/java/edudfsbase/io/hfile/HFileBlockMap.java) · 202 lines
+
+EduDFSBase: all blocks of an HFile in file order with their section and a short description - the basis of ./hbase hfile --layout, --offset, --dump and --html. A …
+
+**inner types:** `Item`, `Section`
+
+| uses (9) | used by (2) |
+|---|---|
+| *(root):* `KeyValue`<br/>*io:* `PositionedReadable`<br/>*io.hfile:* `BlockType`, `FixedFileTrailer`, `HFileBlock`, `HFileBlockIndex`, `HFileReaderImpl`<br/>*util:* `BloomFilterChunk`, `Bytes` | *io.hfile:* `HFileHtmlExporter`, `HFilePrettyPrinter` |
+
+#### `HFileHtmlExporter`
+
+*class* · [`src/main/java/edudfsbase/io/hfile/HFileHtmlExporter.java`](../src/main/java/edudfsbase/io/hfile/HFileHtmlExporter.java) · 405 lines
+
+EduDFSBase: ./hbase hfile --html out.html -f <hfile> writes a self-contained HTML page (no internet needed) that shows the file graphically:
+
+| uses (12) | used by (1) |
+|---|---|
+| *(root):* `Cell`, `HBaseConfiguration`, `KeyValue`<br/>*codec:* `KeyValueCodec`<br/>*io:* `PositionedReadable`<br/>*io.hfile:* `BlockType`, `FixedFileTrailer`, `HFile`, `HFileBlock`, `HFileBlockIndex`, `HFileBlockMap`, `HFileReaderImpl` | *io.hfile:* `HFilePrettyPrinter` |
 
 #### `HFileInfo`
 
@@ -1911,17 +1983,17 @@ Corresponds to org.apache.hadoop.hbase.io.hfile.HFileInfo (the "FileInfo"): meta
 
 #### `HFilePrettyPrinter`
 
-*class* · [`src/main/java/edudfsbase/io/hfile/HFilePrettyPrinter.java`](../src/main/java/edudfsbase/io/hfile/HFilePrettyPrinter.java) · 418 lines
+*class* · [`src/main/java/edudfsbase/io/hfile/HFilePrettyPrinter.java`](../src/main/java/edudfsbase/io/hfile/HFilePrettyPrinter.java) · 597 lines
 
 Corresponds to org.apache.hadoop.hbase.io.hfile.HFilePrettyPrinter (hbase hfile): looks inside an HFile. The flags of the original plus some EduDFSBase views.
 
-| uses (18) | used by (1) |
+| uses (20) | used by (1) |
 |---|---|
-| *(root):* `Cell`, `HBaseConfiguration`, `KeyValue`<br/>*codec:* `KeyValueCodec`<br/>*fs:* `HFileSystem`<br/>*io:* `PositionedReadable`<br/>*io.hfile:* `BlockType`, `FixedFileTrailer`, `HFile`, `HFileBlock`, `HFileBlockIndex`, `HFileInfo`, `HFileReaderImpl`, `LruBlockCache`<br/>*util:* `BloomFilterChunk`, `BloomFilterUtil`, `Bytes`, `ReadTrace` | *tools:* `Demo` |
+| *(root):* `Cell`, `HBaseConfiguration`, `KeyValue`<br/>*codec:* `KeyValueCodec`<br/>*fs:* `HFileSystem`<br/>*io:* `PositionedReadable`<br/>*io.hfile:* `BlockType`, `FixedFileTrailer`, `HFile`, `HFileBlock`, `HFileBlockIndex`, `HFileBlockMap`, `HFileHtmlExporter`, `HFileInfo`, `HFileReaderImpl`, `LruBlockCache`<br/>*util:* `BloomFilterChunk`, `BloomFilterUtil`, `Bytes`, `ReadTrace` | *tools:* `Demo` |
 
 #### `HFileReaderImpl`
 
-*class* · [`src/main/java/edudfsbase/io/hfile/HFileReaderImpl.java`](../src/main/java/edudfsbase/io/hfile/HFileReaderImpl.java) · 298 lines
+*class* · [`src/main/java/edudfsbase/io/hfile/HFileReaderImpl.java`](../src/main/java/edudfsbase/io/hfile/HFileReaderImpl.java) · 402 lines
 
 Corresponds to org.apache.hadoop.hbase.io.hfile.HFileReaderImpl.
 
@@ -1929,9 +2001,9 @@ Corresponds to org.apache.hadoop.hbase.io.hfile.HFileReaderImpl.
 
 **inner types:** `HFileScannerImpl`
 
-| uses (16) | used by (2) |
+| uses (16) | used by (4) |
 |---|---|
-| *(root):* `Cell`, `CellComparator`, `KeyValue`<br/>*codec:* `KeyValueCodec`<br/>*io:* `PositionedReadable`<br/>*io.hfile:* `BlockType`, `FixedFileTrailer`, `HFile`, `HFileBlock`, `HFileBlockIndex`, `HFileInfo`, `HFileScanner`, `LruBlockCache`<br/>*util:* `BloomFilterChunk`, `Bytes`, `ReadTrace` | *io.hfile:* `HFile`, `HFilePrettyPrinter` |
+| *(root):* `Cell`, `CellComparator`, `KeyValue`<br/>*codec:* `KeyValueCodec`<br/>*io:* `PositionedReadable`<br/>*io.hfile:* `BlockType`, `FixedFileTrailer`, `HFile`, `HFileBlock`, `HFileBlockIndex`, `HFileInfo`, `HFileScanner`, `LruBlockCache`<br/>*util:* `BloomFilterChunk`, `Bytes`, `ReadTrace` | *io.hfile:* `HFile`, `HFileBlockMap`, `HFileHtmlExporter`, `HFilePrettyPrinter` |
 
 #### `HFileScanner`
 
@@ -1945,11 +2017,11 @@ Corresponds to org.apache.hadoop.hbase.io.hfile.HFileScanner: a cursor over the 
 
 #### `HFileWriterImpl`
 
-*class* · [`src/main/java/edudfsbase/io/hfile/HFileWriterImpl.java`](../src/main/java/edudfsbase/io/hfile/HFileWriterImpl.java) · 170 lines
+*class* · [`src/main/java/edudfsbase/io/hfile/HFileWriterImpl.java`](../src/main/java/edudfsbase/io/hfile/HFileWriterImpl.java) · 188 lines
 
 Corresponds to org.apache.hadoop.hbase.io.hfile.HFileWriterImpl.
 
-**extends / implements:** `HFile.Writer`
+**extends / implements:** `HFile.Writer`, `HFileBlockIndex.BlockSink`
 
 | uses (13) | used by (1) |
 |---|---|
@@ -2045,7 +2117,7 @@ Corresponds to org.apache.hadoop.hbase.master.assignment.AssignmentManager (+ Re
 
 #### `HMaster`
 
-*class* · [`src/main/java/edudfsbase/master/HMaster.java`](../src/main/java/edudfsbase/master/HMaster.java) · 503 lines
+*class* · [`src/main/java/edudfsbase/master/HMaster.java`](../src/main/java/edudfsbase/master/HMaster.java) · 506 lines
 
 Corresponds to org.apache.hadoop.hbase.master.HMaster: the coordinator of the cluster.
 
@@ -2117,9 +2189,9 @@ Corresponds to org.apache.hadoop.hbase.master.ServerManager: which RegionServers
 
 Corresponds to org.apache.hadoop.hbase.regionserver.BloomType: which key goes into the Bloom filter of an HFile (column family attribute BLOOMFILTER, original default …
 
-| uses (0) | used by (7) |
+| uses (0) | used by (8) |
 |---|---|
-| – | *client:* `ColumnFamilyDescriptor`, `ColumnFamilyDescriptorBuilder`<br/>*regionserver:* `HRegionServer`, `StoreFileReader`, `StoreFileScanner`, `StoreFileWriter`<br/>*tools:* `HBaseShell` |
+| – | *client:* `ColumnFamilyDescriptor`, `ColumnFamilyDescriptorBuilder`<br/>*regionserver:* `HRegionServer`, `StoreFileReader`, `StoreFileScanner`, `StoreFileWriter`<br/>*tools:* `HBaseShell`, `PerformanceEvaluation` |
 
 #### `CompactSplit`
 
@@ -2165,7 +2237,7 @@ Corresponds to org.apache.hadoop.hbase.regionserver.HRegionFileSystem: the direc
 
 #### `HRegionServer`
 
-*class* · [`src/main/java/edudfsbase/regionserver/HRegionServer.java`](../src/main/java/edudfsbase/regionserver/HRegionServer.java) · 384 lines
+*class* · [`src/main/java/edudfsbase/regionserver/HRegionServer.java`](../src/main/java/edudfsbase/regionserver/HRegionServer.java) · 409 lines
 
 Corresponds to org.apache.hadoop.hbase.regionserver.HRegionServer: serves regions.
 
@@ -2385,17 +2457,17 @@ Corresponds to org.apache.hadoop.hbase.regionserver.compactions.RatioBasedCompac
 
 #### `Demo`
 
-*class* · [`src/main/java/edudfsbase/tools/Demo.java`](../src/main/java/edudfsbase/tools/Demo.java) · 200 lines
+*class* · [`src/main/java/edudfsbase/tools/Demo.java`](../src/main/java/edudfsbase/tools/Demo.java) · 238 lines
 
 Guided tour of EduDFSBase. Starts its own EduDFS (NameNode + 3 DataNodes, data in demo-data/) and EduDFSBase (HMaster + 2 RegionServers) and runs through the core …
 
-| uses (16) | used by (0) |
+| uses (17) | used by (0) |
 |---|---|
-| *(root):* `HBaseConfiguration`, `RegionInfo`, `ServerName`<br/>*client:* `Connection`, `ConnectionFactory`<br/>*fs:* `CommonFSUtils`<br/>*io.hfile:* `HFilePrettyPrinter`<br/>*master:* `HMaster`, `ServerCrashProcedure`<br/>*regionserver:* `HRegion`, `HRegionServer`, `HStore`, `HStoreFile`<br/>*tools:* `HBaseShell`, `MiniHBaseCluster`<br/>*wal:* `WALPrettyPrinter` | – |
+| *(root):* `HBaseConfiguration`, `RegionInfo`, `ServerName`<br/>*client:* `Connection`, `ConnectionFactory`<br/>*fs:* `CommonFSUtils`<br/>*io.hfile:* `HFilePrettyPrinter`<br/>*master:* `HMaster`, `ServerCrashProcedure`<br/>*regionserver:* `HRegion`, `HRegionServer`, `HStore`, `HStoreFile`<br/>*tools:* `HBaseShell`, `MiniHBaseCluster`, `PerformanceEvaluation`<br/>*wal:* `WALPrettyPrinter` | – |
 
 #### `HBaseShell`
 
-*class* · [`src/main/java/edudfsbase/tools/HBaseShell.java`](../src/main/java/edudfsbase/tools/HBaseShell.java) · 623 lines
+*class* · [`src/main/java/edudfsbase/tools/HBaseShell.java`](../src/main/java/edudfsbase/tools/HBaseShell.java) · 631 lines
 
 Corresponds to the HBase shell (hbase shell, in the original a JRuby REPL, module hbase-shell). Same commands and the same argument syntax (Ruby literals), same …
 
@@ -2417,6 +2489,16 @@ Corresponds (heavily simplified) to org.apache.hadoop.hbase.MiniHBaseCluster: HM
 |---|---|
 | *(root):* `HBaseConfiguration`<br/>*master:* `HMaster`<br/>*regionserver:* `HRegionServer` | *tools:* `Demo` |
 
+#### `PerformanceEvaluation`
+
+*class* · [`src/main/java/edudfsbase/tools/PerformanceEvaluation.java`](../src/main/java/edudfsbase/tools/PerformanceEvaluation.java) · 249 lines
+
+Corresponds to org.apache.hadoop.hbase.PerformanceEvaluation (hbase pe): generates load - here mainly to get HFiles large enough to see a multi-level block index (B+ …
+
+| uses (18) | used by (1) |
+|---|---|
+| *(root):* `TableName`<br/>*client:* `Admin`, `ColumnFamilyDescriptor`, `ColumnFamilyDescriptorBuilder`, `Connection`, `ConnectionFactory`, `Get`, `Put`, `Result`, `ResultScanner`, `Scan`, `Table`, `TableDescriptor`, `TableDescriptorBuilder`<br/>*fs:* `CommonFSUtils`, `HFileSystem`<br/>*regionserver:* `BloomType`<br/>*util:* `Bytes` | *tools:* `Demo` |
+
 ### Package `util`
 
 #### `BloomFilterChunk`
@@ -2425,9 +2507,9 @@ Corresponds (heavily simplified) to org.apache.hadoop.hbase.MiniHBaseCluster: HM
 
 Corresponds to org.apache.hadoop.hbase.util.BloomFilterChunk: a Bloom filter as a bit array.
 
-| uses (2) | used by (6) |
+| uses (2) | used by (7) |
 |---|---|
-| *util:* `BloomFilterUtil`, `MurmurHash` | *io.hfile:* `HFile`, `HFilePrettyPrinter`, `HFileReaderImpl`, `HFileWriterImpl`<br/>*regionserver:* `StoreFileReader`, `StoreFileWriter` |
+| *util:* `BloomFilterUtil`, `MurmurHash` | *io.hfile:* `HFile`, `HFileBlockMap`, `HFilePrettyPrinter`, `HFileReaderImpl`, `HFileWriterImpl`<br/>*regionserver:* `StoreFileReader`, `StoreFileWriter` |
 
 #### `BloomFilterUtil`
 
@@ -2445,9 +2527,9 @@ Corresponds to org.apache.hadoop.hbase.util.BloomFilterUtil: the formulas for si
 
 Corresponds to org.apache.hadoop.hbase.util.Bytes.
 
-| uses (0) | used by (30) |
+| uses (0) | used by (32) |
 |---|---|
-| – | *(root):* `CellComparator`, `HConstants`, `KeyValue`, `RegionInfo`<br/>*client:* `ColumnFamilyDescriptor`, `ColumnFamilyDescriptorBuilder`, `Connection`, `Get`, `Mutation`, `Result`, `ResultScanner`, `Scan`, `TableDescriptor`<br/>*codec:* `KeyValueCodec`<br/>*io.hfile:* `HFilePrettyPrinter`, `HFileReaderImpl`, `HFileWriterImpl`<br/>*master:* `AssignmentManager`, `HMaster`<br/>*regionserver:* `HRegion`, `HRegionServer`, `HStore`, `ScanQueryMatcher`, `StoreFileReader`, `StoreFileScanner`, `StoreFileWriter`, `StoreScanner`<br/>*regionserver.compactions:* `Compactor`<br/>*tools:* `HBaseShell`<br/>*wal:* `WALPrettyPrinter` |
+| – | *(root):* `CellComparator`, `HConstants`, `KeyValue`, `RegionInfo`<br/>*client:* `ColumnFamilyDescriptor`, `ColumnFamilyDescriptorBuilder`, `Connection`, `Get`, `Mutation`, `Result`, `ResultScanner`, `Scan`, `TableDescriptor`<br/>*codec:* `KeyValueCodec`<br/>*io.hfile:* `HFileBlockMap`, `HFilePrettyPrinter`, `HFileReaderImpl`, `HFileWriterImpl`<br/>*master:* `AssignmentManager`, `HMaster`<br/>*regionserver:* `HRegion`, `HRegionServer`, `HStore`, `ScanQueryMatcher`, `StoreFileReader`, `StoreFileScanner`, `StoreFileWriter`, `StoreScanner`<br/>*regionserver.compactions:* `Compactor`<br/>*tools:* `HBaseShell`, `PerformanceEvaluation`<br/>*wal:* `WALPrettyPrinter` |
 
 #### `EnvironmentEdgeManager`
 
@@ -2581,21 +2663,21 @@ Corresponds to org.apache.hadoop.hbase.wal.WALSplitter: splits the WAL file of a
 
 | Class | Package | used by |
 |---|---|---|
-| `Bytes` | `util` | 30 |
-| `Cell` | `(root)` | 30 |
-| `KeyValue` | `(root)` | 25 |
+| `Bytes` | `util` | 32 |
+| `Cell` | `(root)` | 31 |
+| `KeyValue` | `(root)` | 27 |
 | `RegionInfo` | `(root)` | 24 |
-| `TableName` | `(root)` | 22 |
+| `TableName` | `(root)` | 23 |
+| `HFileBlockIndex` | `io.hfile` | 20 |
 | `HConstants` | `(root)` | 18 |
-| `HFileBlockIndex` | `io.hfile` | 17 |
 | `ServerName` | `(root)` | 17 |
-| `HBaseConfiguration` | `(root)` | 14 |
-| `HFileSystem` | `fs` | 13 |
-| `TableDescriptor` | `client` | 12 |
-| `Result` | `client` | 11 |
-| `Scan` | `client` | 10 |
-| `ColumnFamilyDescriptor` | `client` | 9 |
-| `CommonFSUtils` | `fs` | 9 |
+| `HBaseConfiguration` | `(root)` | 16 |
+| `HFileSystem` | `fs` | 14 |
+| `TableDescriptor` | `client` | 13 |
+| `Result` | `client` | 12 |
+| `Scan` | `client` | 11 |
+| `ColumnFamilyDescriptor` | `client` | 10 |
+| `CommonFSUtils` | `fs` | 10 |
 
 ### Classes with the most dependencies (fan-out)
 
@@ -2606,32 +2688,32 @@ Corresponds to org.apache.hadoop.hbase.wal.WALSplitter: splits the WAL file of a
 | `HRegionServer` | `regionserver` | 31 |
 | `HStore` | `regionserver` | 27 |
 | `HBaseShell` | `tools` | 24 |
+| `HFilePrettyPrinter` | `io.hfile` | 20 |
 | `RSRpcServices` | `regionserver` | 19 |
 | `Compactor` | `regionserver.compactions` | 18 |
-| `HFilePrettyPrinter` | `io.hfile` | 18 |
-| `Demo` | `tools` | 16 |
+| `PerformanceEvaluation` | `tools` | 18 |
+| `Demo` | `tools` | 17 |
 | `HFileReaderImpl` | `io.hfile` | 16 |
 | `Connection` | `client` | 15 |
-| `HFile` | `io.hfile` | 13 |
+| `HFile` | `io.hfile` | 14 |
 | `HFileWriterImpl` | `io.hfile` | 13 |
-| `Table` | `client` | 12 |
-| `FSHLog` | `wal` | 11 |
+| `HFileHtmlExporter` | `io.hfile` | 12 |
 
 ### Package sizes
 
 | Package | Classes | Lines |
 |---|---|---|
-| `(root)` | 19 | 929 |
-| `client` | 16 | 1428 |
+| `(root)` | 19 | 939 |
+| `client` | 16 | 1444 |
 | `codec` | 1 | 89 |
 | `fs` | 2 | 213 |
 | `io` | 2 | 137 |
-| `io.hfile` | 11 | 1640 |
+| `io.hfile` | 13 | 2836 |
 | `ipc` | 5 | 164 |
-| `master` | 7 | 1192 |
-| `regionserver` | 20 | 2743 |
+| `master` | 7 | 1195 |
+| `regionserver` | 20 | 2768 |
 | `regionserver.compactions` | 4 | 320 |
-| `tools` | 3 | 940 |
+| `tools` | 4 | 1235 |
 | `util` | 6 | 359 |
 | `wal` | 8 | 771 |
 

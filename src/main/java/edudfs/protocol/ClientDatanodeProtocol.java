@@ -10,6 +10,8 @@ import java.rmi.Remote;
  * Needed to read a file that is still being written: the NameNode only knows the length of the
  * completed blocks. How many bytes the last block (RBW replica) currently has, only the DataNodes
  * of the pipeline know.
+ *
+ * getBlockLocalPathInfo: where the replica lies on the DataNode's disk (EduDFSBase metasave shows it).
  */
 public interface ClientDatanodeProtocol extends Remote {
 
@@ -17,4 +19,7 @@ public interface ClientDatanodeProtocol extends Remote {
 
     /** Current length of the replica (for an RBW replica: everything received so far). */
     long getReplicaVisibleLength(Block b) throws IOException;
+
+    /** Local block and .meta file of the replica (finalized/ or rbw/ of the volume that holds it). */
+    BlockLocalPathInfo getBlockLocalPathInfo(Block b) throws IOException;
 }

@@ -6,6 +6,7 @@ import edudfsbase.codec.KeyValueCodec;
 import edudfsbase.io.PositionedReadable;
 import edudfsbase.util.BloomFilterChunk;
 import edudfsbase.util.Bytes;
+import edudfsbase.util.ReadTrace;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
@@ -22,7 +23,10 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** HFile format: write into a byte[], read back, seek via the block index, detect corruption. */
+/**
+ * HFile format: write into a byte[], read back, seek via the block index (single- and multi-level), detect
+ * corruption, the views of HFilePrettyPrinter.
+ */
 class HFileTest {
 
     private static final byte[] CF = Bytes.toBytes("cf");
@@ -62,7 +66,7 @@ class HFileTest {
         byte[] file = write(in, 256, null);
         HFile.Reader r = HFile.createReader("test", PositionedReadable.of(file), null);
         assertEquals(200, r.getEntries());
-        assertTrue(r.getDataBlockIndexReader().getRootBlockCount() > 10);
+        assertTrue(r.getDataBlockCount() > 10);
         assertEquals("99", r.getHFileInfo().get(HFileInfo.MAX_SEQ_ID_KEY));
         assertNull(r.getGeneralBloomFilter());
         HFileScanner s = r.getScanner(false, null);
@@ -84,7 +88,9 @@ class HFileTest {
         assertTrue(text.startsWith("DATABLK* onDiskSizeWithoutHeader="));
         assertTrue(text.contains("K: row001/cf:a/1000/Put/vlen=7/seqid=1 V: value-1\n"));
         for (BlockType t : BlockType.values()) {
-            assertTrue(text.contains(t.getMagic()), t.toString());
+            if (t != BlockType.LEAF_INDEX && t != BlockType.INTERMEDIATE_INDEX) {  // a 3-cell file has 1 level
+                assertTrue(text.contains(t.getMagic()), t.toString());
+            }
         }
         assertTrue(text.endsWith("majorVersion=3 minorVersion=3\n"));
     }
@@ -100,6 +106,124 @@ class HFileTest {
         assertTrue(s.seekTo(KeyValue.createLastOnRow(Bytes.toBytes("row057"))));
         assertEquals("row058", Bytes.toString(s.getCell().getRow()));
         assertFalse(s.seekTo(KeyValue.createFirstOnRow(Bytes.toBytes("row999"))));
+    }
+
+    private static List<KeyValue> numbered(int rows) {
+        List<KeyValue> r = new ArrayList<>();
+        for (int i = 0; i < rows; i++) {
+            r.add(new KeyValue(Bytes.toBytes(String.format("%010d", i)), CF, Bytes.toBytes("0"), 1000,
+                    KeyValue.Type.Put, Bytes.toBytes("value-" + i), i + 1));
+        }
+        return r;
+    }
+
+    private static HFileReaderImpl multiLevel(List<KeyValue> in, LruBlockCache cache) throws IOException {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        HFile.Writer w = HFile.getWriter(bos, "test", 1024, 512, 4);
+        for (KeyValue c : in) {
+            w.append(c);
+        }
+        w.close();
+        return (HFileReaderImpl) HFile.createReader("test", PositionedReadable.of(bos.toByteArray()), cache);
+    }
+
+    @Test
+    void largeFileGetsThreeLevelIndexAndEveryKeyIsFound() throws IOException {
+        List<KeyValue> in = numbered(3000);
+        HFileReaderImpl r = multiLevel(in, null);
+        FixedFileTrailer t = r.getTrailer();
+        assertEquals(3, t.getNumDataIndexLevels());
+        assertEquals(r.getDataBlockIndexReader().getRootBlockCount(), t.getDataIndexCount());
+        assertTrue(t.getUncompressedDataIndexSize() > 0);
+        assertEquals(r.length(), t.getTotalUncompressedBytes());
+
+        HFileBlockMap map = new HFileBlockMap(r);
+        long dataBlocks = map.getItems().stream().filter(i -> i.type == BlockType.DATA).count();
+        assertEquals(dataBlocks, r.getDataBlockCount());
+        assertTrue(map.getItems().stream().anyMatch(i -> i.type == BlockType.LEAF_INDEX
+                && i.section == HFileBlockMap.Section.SCANNED));
+        assertTrue(map.getItems().stream().anyMatch(i -> i.type == BlockType.INTERMEDIATE_INDEX
+                && i.section == HFileBlockMap.Section.NON_SCANNED));
+        assertEquals(BlockType.ROOT_INDEX, map.at(t.getLoadOnOpenDataOffset()).type);
+
+        HFileScanner s = r.getScanner(false, null);
+        for (int i = 0; i < in.size(); i += 7) {
+            assertTrue(s.seekTo(KeyValue.createFirstOnRow(in.get(i).getRow())));
+            assertEquals(in.get(i).toString(), s.getCell().toString());
+        }
+        assertTrue(s.seekTo(KeyValue.createFirstOnRow(Bytes.toBytes(""))));
+        assertEquals(in.get(0).toString(), s.getCell().toString());
+        assertFalse(s.seekTo(KeyValue.createFirstOnRow(Bytes.toBytes("9999999999"))));
+
+        // a full scan crosses the leaf index blocks between the data blocks
+        assertTrue(s.seekTo());
+        int n = 0;
+        do {
+            assertEquals(in.get(n).toString(), s.getCell().toString());
+            n++;
+        } while (s.next());
+        assertEquals(3000, n);
+
+        List<HFileBlockIndex.Entry> blocks = r.getDataBlockEntries();
+        assertEquals(KeyValueCodec.encodeKey(blocks.get((blocks.size() - 1) / 2).getFirstKey()),
+                KeyValueCodec.encodeKey(r.midKey()));
+    }
+
+    @Test
+    void seekTraceShowsOneStepPerLevelAndCachedIndexBlocks() throws IOException {
+        LruBlockCache cache = new LruBlockCache(1 << 20);
+        HFileReaderImpl r = multiLevel(numbered(3000), cache);
+        ReadTrace trace = new ReadTrace();
+        r.getScanner(true, trace).seekTo(KeyValue.createFirstOnRow(Bytes.toBytes("0000001234")));
+        String text = String.join("\n", trace.getLines());
+        assertTrue(text.contains("block index level 1/3, root IDXROOT2 (in memory"), text);
+        assertTrue(text.contains("-> intermediate index block @"), text);
+        assertTrue(text.contains("block index level 2/3, IDXINTE2 @"), text);
+        assertTrue(text.contains("block index level 3/3, IDXLEAF2 @"), text);
+        assertTrue(text.contains("-> data block @"), text);
+        long misses = cache.getMissCount();
+        assertTrue(misses >= 3, "intermediate, leaf and data block: " + misses);  // + next block at a boundary
+        r.getScanner(true, null).seekTo(KeyValue.createFirstOnRow(Bytes.toBytes("0000001234")));
+        assertEquals(misses, cache.getHitCount());  // the same index and data blocks, now from the BlockCache
+    }
+
+    @Test
+    void mediumFileHasTwoLevelsAndSmallFileOne() throws IOException {
+        assertEquals(2, multiLevel(numbered(300), null).getTrailer().getNumDataIndexLevels());
+        HFileReaderImpl small = multiLevel(numbered(20), null);
+        assertEquals(1, small.getTrailer().getNumDataIndexLevels());
+        assertEquals(-1, small.getDataBlockIndexReader().getMidLeafBlockOffset());
+        assertTrue(new HFileBlockMap(small).getItems().stream().noneMatch(i -> i.type == BlockType.LEAF_INDEX));
+    }
+
+    @Test
+    void prettyPrinterViews() throws IOException {
+        List<KeyValue> in = numbered(3000);
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        HFile.Writer w = HFile.getWriter(bos, "test", 1024, 512, 4);
+        for (KeyValue c : in) {
+            w.append(c);
+        }
+        w.close();
+        java.io.File f = java.io.File.createTempFile("hfile", ".txt");
+        java.io.File html = java.io.File.createTempFile("hfile", ".html");
+        f.deleteOnExit();
+        html.deleteOnExit();
+        java.nio.file.Files.write(f.toPath(), bos.toByteArray());
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        HFilePrettyPrinter pp = new HFilePrettyPrinter(new java.io.PrintStream(out, true, StandardCharsets.UTF_8));
+        assertEquals(0, pp.run(new String[]{"-m", "--layout", "--tree", "--offset", "100", "--dump", "--html",
+                html.getPath(), "-f", "file:" + f.getPath()}));
+        String o = out.toString(StandardCharsets.UTF_8);
+        assertTrue(o.contains("numDataIndexLevels=3"), o);
+        assertTrue(o.contains("ROOT INDEX OFFSET"), o);
+        assertTrue(o.contains("non-scanned block section"), o);
+        assertTrue(o.contains("IDXLEAF2 @"), o);
+        assertTrue(o.contains("Offset 100 lies inside DATABLK* @0"), o);
+        assertTrue(o.contains("Mid-key: 00000"), o);
+        String page = java.nio.file.Files.readString(html.toPath());
+        assertTrue(page.contains("const D = {"));
+        assertFalse(page.contains("__DATA__"));
     }
 
     @Test

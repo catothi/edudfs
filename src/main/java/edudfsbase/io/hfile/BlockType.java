@@ -7,16 +7,22 @@ import java.io.IOException;
  * an 8-byte "magic" that names its type. The magics are the original ones, so you recognize them
  * in a hex dump of a real HFile.
  *
- * Not in EduDFSBase: LEAF_INDEX ("IDXLEAF2") and INTERMEDIATE_INDEX ("IDXINTE2") of the multi-level
- * index, META ("METABLKc"), DELETE_FAMILY_BLOOM_META ("DFBLMET2"), ENCODED_DATA ("DATABLKE").
+ * Not in EduDFSBase: META ("METABLKc"), DELETE_FAMILY_BLOOM_META ("DFBLMET2"), ENCODED_DATA ("DATABLKE").
  */
 public enum BlockType {
 
     /** Cells, sorted. Section "scanned blocks". */
     DATA("DATABLK*"),
+    /** Leaf level of the multi-level block index, written between the data blocks ("inline"). */
+    LEAF_INDEX("IDXLEAF2"),
     /** Bit array of the Bloom filter. Lies between the data blocks in the original ("inline"). */
     BLOOM_CHUNK("BLMFBLK2"),
-    /** Root level of the data block index: first key + offset of every data block. Load-on-open section. */
+    /** Middle levels of the block index (large files only). Non-scanned block section. */
+    INTERMEDIATE_INDEX("IDXINTE2"),
+    /**
+     * Root level of the data block index (first key + offset per data block or per index block of the next
+     * level), and - a second block of the same type - the meta block index. Load-on-open section.
+     */
     ROOT_INDEX("IDXROOT2"),
     /** FileInfo: key/value metadata (last key, max sequence ID, Bloom type, ...). Load-on-open section. */
     FILE_INFO("FILEINF2"),

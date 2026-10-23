@@ -210,7 +210,7 @@ Background (block reports, invalidate, comparison with FSImage/EditLog): [Sectio
 ## EduDFSBase: a wide column store on top of EduDFS
 
 The package `edudfsbase` adds a teaching implementation of **HBase** (Apache HBase 2.x) that stores all its data in
-EduDFS: HMaster, RegionServers, regions, MemStore, WAL, HFiles with block index and Bloom filter, BlockCache,
+EduDFS: HMaster, RegionServers, regions, MemStore, WAL, HFiles with a multi-level block index (B+ tree) and Bloom filter, BlockCache,
 flushes, compactions and crash recovery via WAL splitting. As in EduDFS, the class names follow the original.
 
 **HFiles and WALs are written as text**, so you can watch them with `./hdfs dfs -cat` – the original writes
@@ -234,7 +234,20 @@ metasave
 ```
 
 Look inside the files with `./hbase hfile --layout -m -f <path>` and `./hbase wal -p <path>`; the guided tour
-`./hbase demo` runs through everything including a RegionServer crash. Everything else:
+`./hbase demo` runs through everything including a RegionServer crash. For a large HFile with a 3-level block index:
+
+```bash
+./hbase pe --rows=3000 --compact sequentialWrite 1
+./hbase hfile -m -f '/hbase/data/default/TestTable/*/info/*'
+./hbase hfile --tree -f '/hbase/data/default/TestTable/*/info/*'
+./hbase hfile --html hfile.html -f '/hbase/data/default/TestTable/*/info/*'
+open hfile.html                                        # macOS; Linux: xdg-open hfile.html
+```
+
+`pe … --compact` leaves exactly one HFile in `TestTable`, so the `*` (resolved in HDFS – keep the quotes) matches it;
+`pe` also prints the full path.
+
+`./hbase demo index` shows the same in its own cluster. Everything else:
 **[docs/EDUDFSBASE.md](docs/EDUDFSBASE.md)**.
 
 ---

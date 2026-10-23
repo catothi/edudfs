@@ -23,6 +23,9 @@ import java.util.Locale;
  * EduDFSBase (HMaster + 2 RegionServers) and runs through the core concepts as a shell session:
  * every "hbase&gt;" line can be typed in ./hbase shell just the same.
  *
+ * {@code ./hbase demo index}: a shorter tour of the HFile block index - 3000 rows, one HFile with a
+ * 3-level B+ tree, a get walking down the tree, the HTML picture of the file.
+ *
  * With -Dedudfs.verbose=true the logs of all components are shown as well.
  */
 public class Demo {
@@ -42,7 +45,11 @@ public class Demo {
         shell = new HBaseShell(conn, System.out);
         quietShell = new HBaseShell(conn, new PrintStream(OutputStream.nullOutputStream()));
         try {
-            run(hbase);
+            if (args.length > 0 && args[0].equals("index")) {
+                runIndex(hbase);
+            } else {
+                run(hbase);
+            }
         } finally {
             conn.close();
             hbase.close();
@@ -153,6 +160,37 @@ public class Demo {
         sh("list_regions 'users'");
         sh("metasave");
         banner("Done. Start your own cluster with ./hdfs minicluster and ./hbase minicluster, then ./hbase shell.");
+    }
+
+    /** ./hbase demo index: the multi-level block index (B+ tree) of a large HFile. */
+    private static void runIndex(MiniHBaseCluster hbase) throws Exception {
+        banner("1) Lots of data: ./hbase pe --rows=3000 --compact sequentialWrite",
+                "PerformanceEvaluation writes 3000 rows 0000000000..0000002999 (BLOCKSIZE 1 KB). The MemStore flushes",
+                "several times on the way; --compact merges everything into ONE HFile with a large index.");
+        new PerformanceEvaluation().run(new String[]{"--rows=3000", "--compact", "sequentialWrite"});
+        String hfile = storeFiles(hbase, "", "info").get(0).getPath();
+
+        banner("2) The index is a B+ tree: ./hbase hfile -m -f <hfile>",
+                "Hundreds of data blocks do not fit into one root index block (hfile.index.block.max.size = "
+                        + HBaseConfiguration.INDEX_BLOCK_MAX_SIZE + " bytes).",
+                "So the writer put a LEAF index block (IDXLEAF2) after every ~7 data blocks, then INTERMEDIATE blocks",
+                "(IDXINTE2) over the leaves, and the ROOT (IDXROOT2) over those. Trailer: numDataIndexLevels = 3.");
+        new HFilePrettyPrinter(System.out).run(new String[]{"-m", "-f", hfile});
+
+        banner("3) A get walks down the tree",
+                "Only the root is in memory. Binary search in the root -> read 1 intermediate block -> binary search",
+                "-> read 1 leaf block -> binary search -> read 1 data block. The second get finds the index",
+                "blocks in the BlockCache.");
+        sh("get 'TestTable', '0000001234', {TRACE => true}");
+        sh("get 'TestTable', '0000001240', {TRACE => true}");
+
+        File html = new File("demo-data", "hfile.html");
+        banner("4) The file as a picture: ./hbase hfile --html hfile.html -f <hfile>",
+                "Block map, B+ tree, lookup of a row with the path drawn in, raw bytes of every block with offsets.",
+                "Open " + html.getAbsolutePath() + " in a browser (add #row=0000001234 to the URL to start a lookup).");
+        new HFilePrettyPrinter(System.out).run(new String[]{"--html", html.getPath(), "-f", hfile});
+        banner("Done. With your own cluster: ./hbase pe --rows=3000 --compact sequentialWrite, then ./hbase hfile"
+                + " --tree / --offset / --dump / --html on the printed path.");
     }
 
     // ---------------------------------------------------------------- helpers

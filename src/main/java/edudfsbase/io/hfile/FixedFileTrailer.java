@@ -28,6 +28,7 @@ public class FixedFileTrailer {
     long fileInfoOffset;
     long loadOnOpenDataOffset;
     int dataIndexCount;
+    long uncompressedDataIndexSize;
     int metaIndexCount;
     long totalUncompressedBytes;
     long entryCount;
@@ -54,6 +55,7 @@ public class FixedFileTrailer {
         m.put("fileInfoOffset", String.valueOf(fileInfoOffset));
         m.put("loadOnOpenDataOffset", String.valueOf(loadOnOpenDataOffset));
         m.put("dataIndexCount", String.valueOf(dataIndexCount));
+        m.put("uncompressedDataIndexSize", String.valueOf(uncompressedDataIndexSize));
         m.put("metaIndexCount", String.valueOf(metaIndexCount));
         m.put("totalUncompressedBytes", String.valueOf(totalUncompressedBytes));
         m.put("entryCount", String.valueOf(entryCount));
@@ -90,6 +92,7 @@ public class FixedFileTrailer {
         t.fileInfoOffset = Long.parseLong(m.get("fileInfoOffset"));
         t.loadOnOpenDataOffset = Long.parseLong(m.get("loadOnOpenDataOffset"));
         t.dataIndexCount = Integer.parseInt(m.get("dataIndexCount"));
+        t.uncompressedDataIndexSize = Long.parseLong(m.getOrDefault("uncompressedDataIndexSize", "0"));
         t.metaIndexCount = Integer.parseInt(m.get("metaIndexCount"));
         t.totalUncompressedBytes = Long.parseLong(m.get("totalUncompressedBytes"));
         t.entryCount = Long.parseLong(m.get("entryCount"));
@@ -109,6 +112,23 @@ public class FixedFileTrailer {
         return loadOnOpenDataOffset;
     }
 
+    public int getNumDataIndexLevels() {
+        return numDataIndexLevels;
+    }
+
+    public long getUncompressedDataIndexSize() {
+        return uncompressedDataIndexSize;
+    }
+
+    public int getMetaIndexCount() {
+        return metaIndexCount;
+    }
+
+    public long getTotalUncompressedBytes() {
+        return totalUncompressedBytes;
+    }
+
+    /** Number of entries in the ROOT level of the data index (= data blocks only for a 1-level index). */
     public int getDataIndexCount() {
         return dataIndexCount;
     }

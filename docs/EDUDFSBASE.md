@@ -25,7 +25,7 @@ original looks like on disk is described in [5.6](#56-text-instead-of-binary-wha
 8. [Flows in detail](#8-flows-in-detail) – write, read, scan, deletes, flush, compaction, WAL roll, assignment, crash, restart
 9. [State machines](#9-state-machines)
 10. [Configuration](#10-configuration)
-11. [Tools](#11-tools) – shell, `hbase hfile`, `hbase wal`, `metasave`, demo, Java API
+11. [Tools](#11-tools) – shell, `hbase hfile` (incl. `--tree`, `--offset`, `--dump`, `--html`), `hbase wal`, `metasave`, demo, Java API, `hbase pe`
 12. [Mapping to the HBase original](#12-mapping-to-the-hbase-original)
 13. [Simplifications and limitations](#13-simplifications-and-limitations)
 14. [Exercises](#14-exercises)
@@ -34,7 +34,7 @@ original looks like on disk is described in [5.6](#56-text-instead-of-binary-wha
 17. [Glossary](#17-glossary)
 18. [References](#18-references)
 
-> The dependencies of all 104 classes (package graph, inheritance, graph per package) are in
+> The dependencies of all 107 classes (package graph, inheritance, graph per package) are in
 > [`EDUDFSBASE_DEPENDENCIES.md`](EDUDFSBASE_DEPENDENCIES.md).
 
 ---
@@ -111,13 +111,14 @@ Physically, everything is **one sorted list of cells** per store – in the MemS
   The HFile records `MAX_SEQ_ID_KEY`: all edits up to this sequence ID are now persistent.
 
 #### 1.2.4 HFile (`HFileWriterImpl`, `HFileReaderImpl`) → 5.2
-* Data blocks (`DATABLK*`), Bloom chunk (`BLMFBLK2`), root index (`IDXROOT2`), FileInfo (`FILEINF2`),
-  Bloom meta (`BLMFMET2`), fixed trailer (`TRABLK"$`). Read from the **back**: trailer → load-on-open section → blocks.
+* Data blocks (`DATABLK*`), leaf/intermediate/root index blocks (`IDXLEAF2`, `IDXINTE2`, `IDXROOT2` – a B+ tree),
+  Bloom chunk (`BLMFBLK2`), FileInfo (`FILEINF2`), Bloom meta (`BLMFMET2`), fixed trailer (`TRABLK"$`).
+  Read from the **back**: trailer → load-on-open section (root index …) → blocks.
 
 #### 1.2.5 Read path (`RegionScanner`, `StoreScanner`, `KeyValueHeap`, `ScanQueryMatcher`) → 8.2
 * Per store: MemStore scanner + one scanner per HFile that **can** contain the row (time range, key range,
   **Bloom filter**) → k-way merge (`KeyValueHeap`) → `ScanQueryMatcher` (versions, deletes, TTL).
-* HFile access: block index (binary search) → block → **BlockCache** or HDFS (pread).
+* HFile access: block index (binary search per level of the B+ tree) → block → **BlockCache** or HDFS (pread).
 
 #### 1.2.6 Compaction (`HStore.compact`, `RatioBasedCompactionPolicy`, `Compactor`) → 8.6
 * After a flush, from 3 HFiles per store (`hbase.hstore.compactionThreshold`) a **minor** compaction merges some files.
@@ -133,7 +134,7 @@ Physically, everything is **one sorted list of cells** per store – in the MemS
 
 ### 1.3 Reading path through the code
 
-You don't have to read the 104 classes in order. This path follows **one put and one get through their life**:
+You don't have to read the 107 classes in order. This path follows **one put and one get through their life**:
 
 | Step | Class | What to look at |
 |---|---|---|
@@ -240,10 +241,12 @@ edudfs/
     │   ├── HFile                Writer/Reader interfaces, factories
     │   ├── HFileWriterImpl, HFileReaderImpl (+ HFileScannerImpl)
     │   ├── HFileBlock, BlockType            fixed-size header + body, magics
-    │   ├── HFileBlockIndex      root index (BlockIndexWriter / BlockIndexReader)
+    │   ├── HFileBlockIndex      multi-level block index, a B+ tree (BlockIndexWriter / BlockIndexReader)
     │   ├── HFileInfo, FixedFileTrailer      FileInfo, trailer
     │   ├── LruBlockCache        block cache with statistics
-    │   └── HFilePrettyPrinter   ./hbase hfile
+    │   ├── HFilePrettyPrinter   ./hbase hfile
+    │   ├── HFileBlockMap        all blocks in file order with section and description (for the tools)
+    │   └── HFileHtmlExporter    ./hbase hfile --html: the file as an interactive page
     ├── fs/                      HFileSystem (EduDFS client of a server), CommonFSUtils (paths)
     ├── wal/                     WAL, FSHLog, WALKeyImpl, WALEdit, TextLogWriter/Reader, WALSplitter, WALPrettyPrinter
     ├── regionserver/
@@ -259,7 +262,7 @@ edudfs/
     ├── ipc/                     RMI interfaces: ClientService, AdminService, MasterService, RegionServerStatusService
     ├── client/                  Connection(Factory), Table, Admin, Put, Delete, Get, Scan, Result, ResultScanner,
     │                            Mutation, TableDescriptor(Builder), ColumnFamilyDescriptor(Builder)
-    └── tools/                   HBaseShell, MiniHBaseCluster, Demo
+    └── tools/                   HBaseShell, MiniHBaseCluster, PerformanceEvaluation (./hbase pe), Demo
 ```
 
 The packages mirror the original (`org.apache.hadoop.hbase.*`); section 12 maps every class.
@@ -376,33 +379,49 @@ The encoded region name is the MD5 hex of `table,startKey,regionId`; the region 
 
 ### 5.2 HFile
 
-An HFile is written **once, sorted, and never changed** (immutable). `./hbase hfile --layout -b -f <path>`:
+An HFile is written **once, sorted, and never changed** (immutable). A small file (one flush of a few rows) has a
+single-level index; `./hbase pe --rows=3000 --compact sequentialWrite` gives a file with a 3-level index.
+`./hbase hfile --layout -f <path>`:
 
 ```
 Physical layout (offset = byte position in the file):
     offset   bytes  magic     content
-         0     373  DATABLK*  data block #0: 4 cells, user01 .. user03
-       373     374  DATABLK*  data block #1: 4 cells, user04 .. user06
+  -------- scanned block section (data blocks, leaf index blocks, Bloom chunks - a scan reads them in order) ----
+         0    1142  DATABLK*  data block #0: 16 cells, 0000000000 .. 0000000015
+      1142    1161  DATABLK*  data block #1: 16 cells, 0000000016 .. 0000000031
        …
-      3009     154  DATABLK*  data block #8: 1 cells, zoe .. zoe
-      3163     171  BLMFBLK2  Bloom bit array: 320 bits, 25 keys, 40% of bits set
-  -------- load-on-open section (read completely when the file is opened) --------
-      3334     720  IDXROOT2  block index: 9 entries (first key + offset per data block)
-      4054     437  FILEINF2  FileInfo: 13 key/value pairs
-      4491     228  BLMFMET2  Bloom metadata: hash count, key count, where the bit array is
-      4719     512  TRABLK"$  fixed trailer: loadOnOpenDataOffset=3334, 33 cells, version 3.3 <- the reader starts here
+      8064    1124  DATABLK*  data block #7: 15 cells, 0000000111 .. 0000000125
+      9188     683  IDXLEAF2  leaf index block: 8 entries -> data blocks #0..#7
+      9871    1124  DATABLK*  data block #8: 15 cells, 0000000126 .. 0000000140
+       …
+    247382     737  DATABLK*  data block #199: 9 cells, 0000002991 .. 0000002999
+    248119     326  IDXLEAF2  leaf index block: 3 entries -> data blocks #197..#199
+    248445    7392  BLMFBLK2  Bloom bit array: 28760 bits, 3000 keys, 52% of bits set
+  -------- non-scanned block section (intermediate index blocks (and META blocks) - only read via the index) ----
+    255837     685  IDXINTE2  intermediate index block: 8 entries -> leaf index blocks
+       …
+    257759     620  IDXINTE2  intermediate index block: 7 entries -> leaf index blocks
+  -------- load-on-open section (read completely when the file is opened) ----------------------------
+    258379     452  IDXROOT2  root data index: 4 entries -> intermediate index blocks  (index level 1 of 3)
+    258831      89  IDXROOT2  meta block index: 0 entries (no META blocks in EduDFSBase)
+    258920     238  FILEINF2  FileInfo: 5 key/value pairs (LASTKEY, MAX_SEQ_ID_KEY, ...)
+    259158     237  BLMFMET2  Bloom metadata: hash count, key count, where the bit array is
+  -------- trailer (fixed size at the end of the file - the reader starts here) ----------------------
+    259395     512  TRABLK"$  fixed trailer: loadOnOpenDataOffset=258379, 3000 cells, version 3.3  <- the reader starts here
 ```
 
-**Sections** (as in HFile version 3):
+**Sections** (as in HFile version 2/3, HBase reference guide, appendix "HFile format"):
 
 | Section | Blocks | Read when |
 |---|---|---|
-| scanned block section | data blocks `DATABLK*` (+ Bloom chunk `BLMFBLK2`, in the original between the data blocks) | on demand, block by block |
-| load-on-open section | root index `IDXROOT2`, FileInfo `FILEINF2`, Bloom meta `BLMFMET2` | completely, when the file is opened |
+| scanned block section | data blocks `DATABLK*`, leaf index blocks `IDXLEAF2` between them, Bloom chunk `BLMFBLK2` | on demand; a scan reads it front to back and skips the non-data blocks |
+| non-scanned block section | intermediate index blocks `IDXINTE2` (original also: META blocks) | only through the index |
+| load-on-open section | root data index `IDXROOT2`, meta block index (second `IDXROOT2`), FileInfo `FILEINF2`, Bloom meta `BLMFMET2` | completely, when the file is opened |
 | trailer | `TRABLK"$`, fixed 512 bytes | first – it says where the load-on-open section starts |
 
-**Opening** (`HFileReaderImpl`): file length − 512 → trailer → `loadOnOpenDataOffset` → read index, FileInfo and Bloom
-meta → (EduDFSBase:) load the Bloom chunk. From now on the reader knows the first key and offset of every data block.
+**Opening** (`HFileReaderImpl`): file length − 512 → trailer → `loadOnOpenDataOffset` (= offset of the root index) →
+read root index, meta index, FileInfo and Bloom meta → (EduDFSBase:) load the Bloom chunk. From now on only the **root**
+of the index is in memory; the levels below it are read when a seek needs them (and then cached in the BlockCache).
 
 **Block** (`HFileBlock`): header of **fixed** size, then the body. The reader reads the header first, learns
 `onDiskSizeWithoutHeader` and then reads exactly the body.
@@ -437,17 +456,62 @@ K: user03/info:city/1792755721648/Put/vlen=10/seqid=6 V: Ingolstadt
 Non-printable bytes are written as `\xNN`; in the key parts `/`, `:` and space are escaped too, so a line can always be
 split unambiguously.
 
-**Root index** (`HFileBlockIndex`), one line per data block:
+**Block index = B+ tree** (`HFileBlockIndex`). Every entry = offset, size and **first key** of a child block:
 
 ```
-IDXROOT2 onDiskSizeWithoutHeader=       631 prevBlockOffset=        -1 checksum=…
-offset=0 onDiskSize=373 firstKey=user01/info:name/1792756034681/Put
-offset=373 onDiskSize=374 firstKey=user04/info:name/1792756034684/Put
+IDXROOT2 @258379  (root index, load-on-open section - always in memory, 4 entries)
+├── [0] 0000000000/info:0/1792761653142/Put  ->  IDXINTE2 @255837  (intermediate index block, 8 entries)
+│   ├── [0] 0000000000/info:0/1792761653142/Put  ->  IDXLEAF2 @9188  (leaf index block, 8 entries)
+│   │   ├── [0] 0000000000/info:0/1792761653142/Put  ->  DATABLK* @0  (data block #0, 1142 bytes)
+│   │   ├── ... 6 more entries ...
+│   │   └── [7] 0000000111/info:0/1792761653142/Put  ->  DATABLK* @8064  (data block #7, 1124 bytes)
+│   ├── ... 6 more entries ...
+├── [1] 0000000861/info:0/1792761653142/Put  ->  IDXINTE2 @256522  (intermediate index block, 7 entries)
+├── [2] 0000001596/info:0/1792761653142/Put  ->  IDXINTE2 @257139  (intermediate index block, 7 entries)
+└── [3] 0000002331/info:0/1792761653142/Put  ->  IDXINTE2 @257759  (intermediate index block, 7 entries)
+    …
+```
+
+(`./hbase hfile -m` shows it shortened, `--tree` completely, `--html` as a picture.)
+
+How the writer builds it (`BlockIndexWriter`, as in the original):
+
+1. After each data block its entry goes into the current **leaf chunk**.
+2. Once the chunk holds `hfile.index.block.max.size` bytes (and at least `hfile.index.block.min.entries` entries), it is
+   written **right after the data block** as `IDXLEAF2` ("inline block"); the leaf's first key goes one level up.
+3. At close: the last leaf chunk. If no leaf was written at all, its entries become the root – a **single-level** index.
+4. While the upper level is larger than one index block, it is written as `IDXINTE2` blocks in the non-scanned section,
+   one more level up each time.
+5. The remaining level is the **root**, the first block of the load-on-open section. Trailer: `numDataIndexLevels`,
+   `dataIndexCount` (= entries of the root), `uncompressedDataIndexSize` (all index blocks).
+
+Formats – root and non-root blocks differ, as in the original:
+
+```
+IDXROOT2 onDiskSizeWithoutHeader=       363 prevBlockOffset=        -1 checksum=3907083c
+offset=255837 onDiskSize=685 firstKey=0000000000/info:0/1792761653142/Put
+offset=256522 onDiskSize=617 firstKey=0000000861/info:0/1792761653142/Put
+…
+midLeafBlockOffset=129887 midLeafBlockOnDiskSize=627 midKeyEntry=0      <- only with more than 1 level
+
+IDXLEAF2 onDiskSizeWithoutHeader=       594 prevBlockOffset=        -1 checksum=2524658c
+numEntries=8
+offset=0 onDiskSize=1142 firstKey=0000000000/info:0/1792761653142/Put
+offset=1142 onDiskSize=1161 firstKey=0000000016/info:0/1792761653142/Put
 …
 ```
 
-`rootBlockContainingKey(key)` is a binary search for the last block whose first key is smaller than the key. A get for
-`user05` therefore reads exactly one block (offset 373) instead of the whole file.
+The **mid-key** metadata names the leaf block and the entry of the middle data block: its first key is where a region
+split would cut (`hbase hfile -m` prints it). In a single-level index the reader takes the middle root entry.
+
+**Seek** (`HFileReaderImpl.seekToDataBlock`): binary search in the root (in memory) for the last entry whose first key
+is smaller than the key → read that index block → binary search → … → data block. Cost: one block read per level
+below the root – and the index blocks are cached like data blocks. A get with `TRACE => true` shows every step (8.2).
+A **scan** does not use the index after the first seek: it reads the next block in file order and skips `IDXLEAF2`
+blocks it meets between the data blocks.
+
+Why a tree: with one root level the whole index of every open HFile would have to be in memory – for a 10 GB file
+with 64 KB blocks that is 160,000 entries. With leaf and intermediate levels only the small root stays in memory.
 
 **FileInfo** (`HFileInfo`):
 
@@ -463,9 +527,36 @@ offset=373 onDiskSize=374 firstKey=user04/info:name/1792756034684/Put
 | `COMPACTION_EVENT_KEY` | Compactor | names of the input files of the compaction |
 | `EDU_CREATED_BY` | EduDFSBase only | flush / minor compaction / major compaction |
 
-**Trailer** (`FixedFileTrailer`): `fileInfoOffset`, `loadOnOpenDataOffset`, `dataIndexCount`, `entryCount`,
-`firstDataBlockOffset`, `lastDataBlockOffset`, `numDataIndexLevels` (always 1), `comparatorClassName`, padded with
-spaces to exactly 512 bytes; the last line is `majorVersion=3 minorVersion=3`.
+**Trailer** (`FixedFileTrailer`), padded with spaces to exactly 512 bytes; the last line is
+`majorVersion=3 minorVersion=3`. `./hbase hfile -m` prints every field with its meaning:
+
+| Field | Meaning |
+|---|---|
+| `fileInfoOffset` | offset of the FileInfo block |
+| `loadOnOpenDataOffset` | start of the load-on-open section = **offset of the root index** |
+| `dataIndexCount` | entries in the **root** level (= number of data blocks only with 1 level) |
+| `uncompressedDataIndexSize` | bytes of all data index blocks (leaf + intermediate + root) |
+| `metaIndexCount` | entries of the meta block index (0: no META blocks) |
+| `totalUncompressedBytes` | all blocks + trailer before compression – here the file size |
+| `entryCount` | number of cells |
+| `compressionCodec` | `NONE` |
+| `numDataIndexLevels` | height of the index tree: 1, 2 (root → leaf), 3 (root → intermediate → leaf), … |
+| `firstDataBlockOffset` / `lastDataBlockOffset` | first / last data block – a scan runs from the one to the other |
+| `comparatorClassName` | sort order of the keys |
+
+Not in EduDFSBase: `encryptionKey` (no encryption). In the original the trailer is a protobuf message padded to a size
+fixed per version.
+
+**Looking at offsets.** Since the file is text, it can be opened in an editor (`./hdfs dfs -get <path> x.hfile`, or the
+replica path from `metasave`). An editor shows line numbers, the index and the trailer use byte offsets:
+
+* `./hbase hfile --dump -f <path>` prints every line with its line number **and** its byte offset – put it next to the
+  editor. Block starts are marked.
+* `./hbase hfile --offset 9188 -f <path>` prints the block at (or containing) a byte offset, every line with its offset,
+  and explains the header and where each index entry points.
+* `./hbase hfile --html hfile.html -f <path>` writes an HTML page (no internet needed): the file as a bar of blocks, the
+  B+ tree as a graph, a **lookup** that draws the path of a get through the tree (also as `hfile.html#row=<key>`), the
+  raw bytes of every block with offsets, the trailer with clickable offsets.
 
 ### 5.3 Bloom filter
 
@@ -551,7 +642,8 @@ A restarted master rebuilds its picture of all tables and regions from these fil
 | block header | text line, 89 bytes | 33 bytes: magic(8), onDiskSizeWithoutHeader(4), uncompressedSizeWithoutHeader(4), prevBlockOffset(8), checksumType(1), bytesPerChecksum(4), onDiskDataSizeWithHeader(4) |
 | block checksum | one CRC32 per block in the header | CRC32C per 16 KB of the block, after the data |
 | data block contents | plain | optionally compressed (Snappy, LZ4, ZSTD, GZ) and encoded (`DATA_BLOCK_ENCODING`: PREFIX, DIFF, FAST_DIFF, ROW_INDEX_V1) |
-| root index entry | `offset=… onDiskSize=… firstKey=…` | long offset, int size, length-prefixed key; plus mid-key info; multi-level (leaf/intermediate blocks) |
+| root index entry | `offset=… onDiskSize=… firstKey=…`; mid-key line | long offset, int size, length-prefixed key; mid-key metadata as long, int, int |
+| leaf / intermediate index block | `numEntries=…` + entry lines | int numEntries, "secondary index" (int position of every entry), then the entries – for a binary search without parsing |
 | FileInfo | `KEY=value` lines | magic `PBUF` + protobuf `FileInfoProto` (byte[] keys and values) |
 | Bloom chunk | hex, 32 bytes per line | the raw bit array; several chunks (`CompoundBloomFilter`, 128 KB each) |
 | trailer | `key=value` lines, padded to 512 bytes, version line at the end | magic `TRABLK"$` + protobuf `FileTrailerProto`, padded to the version's fixed size; the **last 4 bytes** hold the version (minor << 24 \| major) |
@@ -714,13 +806,13 @@ Read path (TRACE):
     HFile e5621abd: Bloom filter (ROW) says MAYBE -> must read
     HFile e1fd2273: Bloom filter (ROW) says MAYBE -> must read
     HFile e5621abd: seek
-        block index: key user05/:/9223372036854775807/Maximum -> data block #0 of 1
-        data block #0 (first key user05/info:city/1792756034823/Put)
+        block index level 1/1, root IDXROOT2 (in memory, 1 entries): key user05/:/9223372036854775807/Maximum -> entry #0 (first key user05/info:city/1792756034823/Put) -> data block @0
         block @0: BlockCache MISS -> read 222 bytes from HDFS (pread)
+        data block @0 (first key user05/info:city/1792756034823/Put)
     HFile e1fd2273: seek
-        block index: key user05/:/9223372036854775807/Maximum -> data block #1 of 9
-        data block #1 (first key user04/info:name/1792756034684/Put)
+        block index level 1/1, root IDXROOT2 (in memory, 9 entries): key user05/:/9223372036854775807/Maximum -> entry #1 (first key user04/info:name/1792756034684/Put) -> data block @373
         block @373: BlockCache MISS -> read 374 bytes from HDFS (pread)
+        data block @373 (first key user04/info:name/1792756034684/Put)
   store stats: MemStore (0 cells) + 1 HFile(s)
     HFile 30474519: key range of the file does not overlap the requested rows -> skipped
 ```
@@ -733,7 +825,21 @@ Read path (TRACE):
    row): index → block → binary search in the block. Block from the **BlockCache** or via **pread** from HDFS.
 5. `KeyValueHeap` merges; `ScanQueryMatcher` decides cell by cell (8.4).
 
-Running the same get again shows `BlockCache HIT` – no HDFS access. A get for a row that does not exist:
+Running the same get again shows `BlockCache HIT` – no HDFS access. With a large HFile (`./hbase pe --rows=3000
+--compact sequentialWrite`) the index has 3 levels and the seek walks down the tree, one block per level:
+
+```
+hbase> get 'TestTable', '0000001234', {TRACE => true}
+        block index level 1/3, root IDXROOT2 (in memory, 4 entries): key 0000001234/:/…/Maximum -> entry #1 (first key 0000000861/info:0/…/Put) -> intermediate index block @256522
+        block @256522: BlockCache MISS -> read 617 bytes from HDFS (pread)
+        block index level 2/3, IDXINTE2 @256522 (7 entries): key … -> entry #3 (first key 0000001176/info:0/…/Put) -> leaf index block @103462
+        block @103462: BlockCache MISS -> read 622 bytes from HDFS (pread)
+        block index level 3/3, IDXLEAF2 @103462 (7 entries): key … -> entry #3 (first key 0000001221/info:0/…/Put) -> data block @98786
+        block @98786: BlockCache MISS -> read 1169 bytes from HDFS (pread)
+        data block @98786 (first key 0000001221/info:0/…/Put)
+```
+
+A second get nearby finds the intermediate and leaf blocks in the BlockCache. A get for a row that does not exist:
 
 ```
     HFile e5621abd: Bloom filter (ROW) says MAYBE -> must read
@@ -1054,6 +1160,8 @@ JAVA_OPTS="-Dzookeeper.session.timeout=3000" ./hbase minicluster 2
 | `hbase.regionserver.hlog.blocksize` | 64k | 2 × HDFS block size | WAL block size |
 | `hbase.regionserver.logroll.multiplier` | 0.5 | 0.5 | roll at blocksize × multiplier |
 | `hbase.regionserver.logroll.period` | 1 h | 1 h | roll at least this often |
+| `hfile.index.block.max.size` | 512 | 128 KB | size of an index block; above it the index gets another level (5.2) |
+| `hfile.index.block.min.entries` | 4 | 16 | at least this many entries per index block |
 | `io.storefile.bloom.error.rate` | 0.01 | 0.01 | target false positive rate |
 | `hfile.block.cache.size` | 0.4 | 0.4 | share of the heap for the BlockCache |
 | `hbase.regionserver.msginterval` | 1000 | 3000 | heartbeat interval |
@@ -1097,7 +1205,9 @@ client pause 50 ms.
 | `./hbase hfile [options] -f <path>` | HFilePrettyPrinter (11.3) |
 | `./hbase wal [options] <path>` | WALPrettyPrinter (11.4) |
 | `./hbase metasave` | `metasave` of master and all RegionServers |
+| `./hbase pe [options] <command>` | PerformanceEvaluation: generate load (11.8) |
 | `./hbase demo` | guided tour (own EduDFS + EduDFSBase in `demo-data/`) |
+| `./hbase demo index` | shorter tour of the multi-level block index (B+ tree) |
 
 All of them need `./hdfs build` (one build for EduDFS and EduDFSBase). With `JAVA_OPTS="-Dedudfs.verbose=true"` the shell
 and the tools show the logs too.
@@ -1132,20 +1242,26 @@ Scripts: one command per line, `#` starts a comment line:
 
 | Flag | Shows | Original |
 |---|---|---|
-| `-m` | trailer, FileInfo (with explanations), Bloom filter statistics | ✓ |
-| `-b` | block index: block number, offset, size, first key | ✓ |
+| `-m` | trailer (every field explained, offsets with the block they point to), FileInfo, mid-key, index tree (shortened), Bloom filter statistics | ✓ (explanations: EduDFSBase) |
+| `-b` | data block index: block number, offset, size, first key (read from the leaves) | ✓ |
 | `-h` | header of every block in file order | ✓ |
 | `-p` | all cells as `K: … V: …` | ✓ |
 | `-e` | keys only (with `-p`) | ✓ |
 | `-s` | statistics: cells per type, rows, columns, largest row, average sizes | ✓ (extended) |
 | `-r row` | only this row (with `-p`, `--table`); with `--bloom`: ask the filter | ✓ |
 | `-v` | `-m -b -s` | ✓ (verbose) |
-| `--layout` | physical map: which block lies at which offset, sections | EduDFSBase |
+| `--layout` | physical map: which block lies at which offset, by section | EduDFSBase |
+| `--tree` | the block index as a tree: root → intermediate → leaf → data blocks | EduDFSBase |
+| `--offset n` | the block at / containing byte n; every line with its offset, header and index entries explained | EduDFSBase |
+| `--dump` | the whole file, every line with line number and byte offset (next to an editor) | EduDFSBase |
+| `--html out.html` | interactive page: block map, B+ tree graph, lookup with the path of a get, raw blocks, trailer | EduDFSBase |
 | `--table` | the cells as a table with the data block they are in | EduDFSBase |
 | `--grid` | wide column view: one line per row, one column per family:qualifier | EduDFSBase |
 | `--bloom` | the Bloom filter's bit array as `#`/`.` | EduDFSBase |
 
-Without flags: `--layout -m`. The path is an HDFS path; `file:<local path>` reads a local copy
+Without flags: `--layout -m`. The path is an HDFS path and may contain `*` (EduDFSBase; quote it so the local shell
+does not expand it): `-f '/hbase/data/default/TestTable/*/info/*'` – hidden entries such as `.tmp` are skipped, `--html`
+needs exactly one match. `file:<local path>` reads a local copy
 (`./hdfs dfs -get … x.hfile; ./hbase hfile -f file:x.hfile`). `metasave` prints the store directory of every HFile.
 
 ```
@@ -1183,11 +1299,14 @@ row=alice, type=Put
 HMaster localhost,16000,1792756031333
 Online RegionServers (1):
   localhost,16021,1792756031390        last report 0.6 s ago, 1 region(s), MemStore 0 bytes, 2 HFile(s)
+      WALs /hbase/WALs/localhost,16021,1792756031390
 Dead RegionServers: [localhost,16020,1792756031374]
 hbase:meta (in master memory):
   table users  ENABLED  {NAME => 'info', …}  {NAME => 'stats', …}
     18a3bca30b22b8d0a9544b09b0e06e82  ['', 'm')  OPEN              on localhost,16021,1792756031390
+      dir /hbase/data/default/users/18a3bca30b22b8d0a9544b09b0e06e82
     c41345ff5db24ac015b71eed580124bf  ['m', '')  OPEN              on localhost,16021,1792756031390
+      dir /hbase/data/default/users/c41345ff5db24ac015b71eed580124bf
 Procedures:
   pid=1 ServerCrashProcedure server=localhost,16020,1792756031374  SUCCESS
       …
@@ -1195,6 +1314,9 @@ Procedures:
 RegionServer localhost,16021,1792756031390
   WAL      /hbase/WALs/localhost,16021,1792756031390/localhost%2C16021%2C1792756031390.1792756031391
            39 entries, 7561 bytes (roll at 32768 bytes)
+           replica data/dn0/data/1/dfs/dn/current/BP-1-127.0.0.1-1700000000000/current/rbw/blk_1073741851
+           replica data/dn2/data/2/dfs/dn/current/BP-1-127.0.0.1-1700000000000/current/rbw/blk_1073741851
+           replica data/dn1/data/1/dfs/dn/current/BP-1-127.0.0.1-1700000000000/current/rbw/blk_1073741851
   BlockCache blocks=4, size=1342 of 2576980377 bytes, hits=11, misses=26, hitRatio=30%, evicted=0
   Regions (2):
   users,,1792756034574.18a3bca30b22b8d0a9544b09b0e06e82.  ['', 'm')
@@ -1203,15 +1325,20 @@ RegionServer localhost,16021,1792756031390
         HFiles (2) in /hbase/data/default/users/18a3bca30b22b8d0a9544b09b0e06e82/info/:
           name                                 bytes  cells blocks  seqid bloom  bloom req/neg/fp       created by
           58b2d501a4524cb79d112811568fd45c      1784      3      1      3 ROW    0/0/0                  major compaction
+            replica data/dn0/data/2/dfs/dn/current/BP-1-127.0.0.1-1700000000000/current/finalized/subdir0/subdir0/blk_1073741849
+            …
           68e62deadd3b44af8ec9ed8550980b2b      1719      3      1      6 ROW    0/0/0                  flush
+            replica …
 ```
 
 | Part | What it tells you |
 |---|---|
 | `last report … ago` | heartbeats; > `zookeeper.session.timeout` → the server is declared dead. Region and HFile counts are those of the last report – right after a recovery they lag behind (here: the second region was opened after the report) |
-| `hbase:meta` lines | where each region is open, its state (section 9.1) |
+| `hbase:meta` lines | where each region is open, its state (section 9.1); `dir` is the region directory in HDFS – not stored in `hbase:meta` but derived from table and encoded name, as HBase itself does |
 | `Procedures` | the steps of every ServerCrashProcedure with time stamps |
+| `WALs` (server list) | the WAL directory of the server in HDFS – after a crash, the ServerCrashProcedure splits exactly this directory |
 | `WAL` | current WAL file, its size, when it rolls, which rolled files wait for which flush |
+| `replica` | where the DataNodes keep the HDFS blocks of the WAL / HFile on their disks (`rbw/` while the file is open, `finalized/` once the block is complete) – ready for `cat`. HBase only knows the HDFS path; the RegionServer asks the NameNode for the block locations and each DataNode for its local path (`ClientDatanodeProtocol.getBlockLocalPathInfo`, as used for short-circuit reads in the original) |
 | `BlockCache` | cached blocks and hit ratio |
 | `openSeqNum`, `readPoint`, `lastFlushSeqId` | MVCC/sequence IDs: everything ≤ lastFlushSeqId is in HFiles |
 | `store …: MemStore` | cells and bytes not yet flushed (the first 5 cells are listed) |
@@ -1228,6 +1355,15 @@ RegionServer localhost,16021,1792756031390
 | 5 | new version, delete, deleteall, RAW scan | tombstones, versions, sources |
 | 6 | third flush → minor compaction, `major_compact` | which cells are dropped why |
 | 7 | 3 puts, kill a RegionServer | ServerCrashProcedure, WAL split, replay, data back |
+
+`./hbase demo index`:
+
+| # | Scenario | Shows |
+|---|---|---|
+| 1 | `pe --rows=3000 --compact sequentialWrite` | auto flushes, compaction into one HFile of ~340 KB with ~290 data blocks |
+| 2 | `hbase hfile -m` | annotated trailer (`numDataIndexLevels=3`), mid-key, index tree |
+| 3 | 2 gets with `TRACE` | the seek walks root → intermediate → leaf → data block; the second get hits the cached index blocks |
+| 4 | `hbase hfile --html` | `demo-data/hfile.html` – open it in a browser |
 
 ### 11.7 Programmatic use
 
@@ -1251,6 +1387,33 @@ try (Connection conn = ConnectionFactory.createConnection()) {
 
 The API is that of the original (`org.apache.hadoop.hbase.client`) in a subset; `setTrace`/`setShowSource` are EduDFSBase
 additions.
+
+### 11.8 `./hbase pe` (PerformanceEvaluation)
+
+Generates load against the running cluster, like `hbase pe` in the original – here mainly to get HFiles large enough
+for a multi-level index.
+
+```bash
+./hbase pe --rows=3000 --compact sequentialWrite 1
+./hbase hfile --tree -f '/hbase/data/default/TestTable/*/info/*'
+./hbase pe --rows=3000 randomRead
+```
+
+| Option | Default (original) | Meaning |
+|---|---|---|
+| `--rows=N` | 3000 (1048576) | rows to write / gets / … |
+| `--table=NAME` | TestTable | created if missing: family `info` |
+| `--valueSize=N` | 32 (1024) | bytes per value (random letters) |
+| `--columns=N` | 1 | qualifiers `0` … `N-1` |
+| `--presplit=N` | 1 region | pre-split the new table evenly |
+| `--bloomFilter=T` | ROW | Bloom filter of the new family |
+| `--blockSize=N` | 1024 | `BLOCKSIZE` of the new family (EduDFSBase) |
+| `--flush` | – | flush at the end (EduDFSBase) |
+| `--compact` | – | flush + `major_compact` at the end: one HFile per region (EduDFSBase) |
+
+Commands: `sequentialWrite` (keys `0000000000` …, 10 digits – original: 26), `randomWrite`, `randomRead`, `scan`.
+After a write the HFiles of the table are listed with the `./hbase hfile` commands to look inside. One client only
+(the original runs `nclients` threads or MapReduce tasks).
 
 ---
 
@@ -1283,6 +1446,8 @@ additions.
 | `tools.HBaseShell` | `hbase-shell` (JRuby) | |
 | `tools.MiniHBaseCluster` | `MiniHBaseCluster` (hbase-testing-util) | |
 | `util.ReadTrace`, `tools.Demo` | – | EduDFSBase |
+| `tools.PerformanceEvaluation` | `org.apache.hadoop.hbase.PerformanceEvaluation` | `hbase pe` |
+| `io.hfile.HFileBlockMap`, `io.hfile.HFileHtmlExporter` | – | EduDFSBase (`hbase hfile --layout/--offset/--dump/--html`) |
 
 ---
 
@@ -1291,7 +1456,7 @@ additions.
 | Topic | EduDFSBase | Original |
 |---|---|---|
 | File formats | text (5.6) | binary, protobuf |
-| HFile | single-level index, one Bloom chunk, no compression/encoding, no tags, no MOB | multi-level index, compound Bloom filter, compression, block encoding, tags (ACL, TTL per cell), MOB files |
+| HFile | multi-level index without the "secondary index" in non-root blocks (text lines instead), one Bloom chunk, no META blocks, no compression/encoding, no tags, no MOB | binary index blocks with secondary index, compound Bloom filter (chunks inline), compression, block encoding, tags (ACL, TTL per cell), MOB files |
 | Coordination | no ZooKeeper; heartbeats to the master; `hbase:meta` in master memory | ZooKeeper (master election, RegionServer liveness, meta location), `hbase:meta` as a table |
 | Master | one, no backup; no procedure store; table state not persisted | active + backup masters; procedures in the procedure WAL survive master crashes |
 | Regions | no automatic split or merge; no balancer | split at `hbase.hregion.max.filesize`, merges, `StochasticLoadBalancer` |
@@ -1339,6 +1504,16 @@ additions.
     RegionServer gets the writes? Design a row key (salting/hashing) that spreads them.
 14. **Code reading**: in `HRegion.replayRecoveredEditsIfAny`, why is the comparison `seq <= maxSeqIdInStores` per
     *store* and not per region?
+15. **B+ tree**: `./hbase pe --rows=3000 --compact sequentialWrite`, then `./hbase hfile -m` and `--tree` on the HFile.
+    How many entries fit into one index block, and why that many (`hfile.index.block.max.size`, length of a key)?
+    Predict `numDataIndexLevels` for 300, 3000 and 30000 rows; check it. How many block reads does a get need at most,
+    and how many with a warm BlockCache?
+16. **Offsets by hand**: open the HFile (`./hdfs dfs -get`) in an editor next to `./hbase hfile --dump`. Start at the
+    trailer, follow `loadOnOpenDataOffset` to the root, pick the entry for row `0000001234`, follow its offset down to
+    the data block – the way `HFileReaderImpl` does it. Compare with the lookup in `./hbase hfile --html` and with
+    `get … {TRACE => true}`.
+17. **Mid-key**: which row does `hbase hfile -m` name as mid-key? Why is it a good split point for the region, and why
+    does the root store the leaf block and entry instead of the key itself?
 
 ---
 
@@ -1375,7 +1550,7 @@ The integration test starts EduDFS (NameNode + 3 DataNodes) and EduDFSBase (mast
 | Test class | Kind | Tests | What is checked |
 |---|---|---|---|
 | `CellComparatorTest` | unit | 4 | newest version first, delete markers before Puts, later edit first, first/last-on-row keys, unsigned row order |
-| `io.hfile.HFileTest` | unit | 8 | write/read round trip with many blocks, original magics in the text, seek via the index, out-of-order keys rejected, corrupt block detected by the checksum, Bloom filter without false negatives and with a bounded false positive rate, BlockCache hit, escaping in the codec |
+| `io.hfile.HFileTest` | unit | 12 | write/read round trip with many blocks, original magics in the text, seek via the index, out-of-order keys rejected, corrupt block detected by the checksum, Bloom filter without false negatives and with a bounded false positive rate, BlockCache hit, escaping in the codec; 3-level index (sections, every key found, scan across leaf blocks, mid-key), seek trace one step per level and cached index blocks, 1 and 2 levels, the `hbase hfile` views incl. `--html` |
 | `regionserver.ScanQueryMatcherTest` | unit | 6 | user scan, raw scan, minor and major compaction on the same row with all three marker types, TTL, column selection |
 | `regionserver.compactions.RatioBasedCompactionPolicyTest` | unit | 6 | too few files, similar sizes, large old file skipped, nothing left after skipping, at most `compaction.max`, small files below min size |
 | `wal.TextLogTest` | unit | 2 | round trip with trailer, last entry cut off by a crash is ignored |
@@ -1389,6 +1564,7 @@ The integration test starts EduDFS (NameNode + 3 DataNodes) and EduDFSBase (mast
 | Term | Meaning |
 |---|---|
 | **Block (HFile)** | unit of reading and caching in an HFile (`BLOCKSIZE`), not to be confused with an HDFS block |
+| **Block index** | B+ tree over the data blocks of an HFile: root (`IDXROOT2`, in memory), intermediate (`IDXINTE2`) and leaf (`IDXLEAF2`) index blocks; `numDataIndexLevels` = its height |
 | **BlockCache** | cache of HFile blocks on the RegionServer (`LruBlockCache`) |
 | **Bloom filter** | bit array per HFile that can say "this row is definitely not in the file" |
 | **Cell** | (row, family, qualifier, timestamp, type) → value |
@@ -1397,6 +1573,8 @@ The integration test starts EduDFS (NameNode + 3 DataNodes) and EduDFSBase (mast
 | **Delete marker / tombstone** | cell of type `Delete`, `DeleteColumn` or `DeleteFamily` that hides older cells |
 | **Flush** | writing a MemStore into a new HFile |
 | **HFile** | immutable sorted file of cells (store file) |
+| **Load-on-open section** | root index, meta index, FileInfo, Bloom meta – read completely when an HFile is opened |
+| **Mid-key** | first key of the middle data block of an HFile – the split point of a region |
 | **hbase:meta** | catalog of all regions and their RegionServers |
 | **LSM tree** | log-structured merge tree: log + sorted in-memory part + immutable sorted files + merging |
 | **MemStore** | sorted in-memory part of a store (skip list) |

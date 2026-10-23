@@ -2,6 +2,8 @@ package edudfs.client;
 
 import edudfs.common.HdfsConfig;
 import edudfs.protocol.Block;
+import edudfs.protocol.BlockLocalPathInfo;
+import edudfs.protocol.ClientDatanodeProtocol;
 import edudfs.protocol.ClientProtocol;
 import edudfs.protocol.DatanodeInfo;
 import edudfs.protocol.HdfsFileStatus;
@@ -126,6 +128,28 @@ public class DFSClient implements Closeable {
 
     public String metaSave() throws IOException {
         return namenode.metaSave();
+    }
+
+    /**
+     * EduDFS: for every block of the file and every replica, the local block file on the DataNode
+     * (asks the NameNode for the locations, then each DataNode via ClientDatanodeProtocol).
+     * A DataNode that cannot be reached yields an entry with a null path.
+     */
+    public List<BlockLocalPathInfo> getBlockLocalPaths(String src) throws IOException {
+        checkOpen();
+        List<BlockLocalPathInfo> res = new ArrayList<>();
+        for (LocatedBlock lb : namenode.getBlockLocations(src, 0, Long.MAX_VALUE).getLocatedBlocks()) {
+            for (DatanodeInfo dn : lb.getLocations()) {
+                try {
+                    ClientDatanodeProtocol cdp = (ClientDatanodeProtocol) LocateRegistry
+                            .getRegistry(dn.getHostName(), dn.getIpcPort()).lookup(ClientDatanodeProtocol.NAME);
+                    res.add(cdp.getBlockLocalPathInfo(lb.getBlock()));
+                } catch (IOException | NotBoundException e) {
+                    res.add(new BlockLocalPathInfo(lb.getBlock(), null, null));
+                }
+            }
+        }
+        return res;
     }
 
     public DatanodeInfo[] datanodeReport() throws IOException {

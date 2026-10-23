@@ -22,12 +22,14 @@ import java.util.TreeMap;
  * Opening (as in the original):
  * <ol>
  *   <li>read the trailer at (file length - 512) - it says where the load-on-open section begins,</li>
- *   <li>read the load-on-open section completely: root index, FileInfo, Bloom metadata,</li>
+ *   <li>read the load-on-open section completely: root data index, meta index, FileInfo, Bloom metadata,</li>
  *   <li>(EduDFSBase:) also load the Bloom chunk right away. The original fetches Bloom chunks on demand
  *       through the BlockCache.</li>
  * </ol>
- * After that the reader knows every block offset and first key. Data blocks are read only when a
- * scanner needs them - first from the BlockCache, otherwise from HDFS.
+ * After that only the ROOT of the block index is in memory. A seek walks down the tree: root -&gt;
+ * (intermediate -&gt;) (leaf -&gt;) data block; index and data blocks are read when needed - first from the
+ * BlockCache, otherwise from HDFS. A scan moves on block by block in file order and skips the leaf
+ * index blocks between the data blocks.
  */
 public class HFileReaderImpl implements HFile.Reader {
 
@@ -38,6 +40,8 @@ public class HFileReaderImpl implements HFile.Reader {
     private final FixedFileTrailer trailer;
     private final HFileBlockIndex.BlockIndexReader dataBlockIndexReader;
     private final HFileInfo fileInfo;
+    private int metaIndexEntries;
+    private List<HFileBlockIndex.Entry> dataBlockEntries;
     private final Map<String, String> bloomMeta = new TreeMap<>();
     private BloomFilterChunk bloom;
     /** All non-data blocks in file order (for HFilePrettyPrinter --layout). */
@@ -57,7 +61,13 @@ public class HFileReaderImpl implements HFile.Reader {
             HFileBlock b = HFileBlock.read(in, offset, name);
             loadOnOpenBlocks.add(b);
             switch (b.getBlockType()) {
-                case ROOT_INDEX -> indexBlock = b;
+                case ROOT_INDEX -> {
+                    if (indexBlock == null) {
+                        indexBlock = b;  // the first root index is the data index ...
+                    } else {
+                        metaIndexEntries = b.getLines().size();  // ... the second one the meta index
+                    }
+                }
                 case FILE_INFO -> infoBlock = b;
                 case GENERAL_BLOOM_META -> {
                     for (String line : b.getLines()) {
@@ -72,7 +82,7 @@ public class HFileReaderImpl implements HFile.Reader {
         if (indexBlock == null || infoBlock == null) {
             throw new IOException("Load-on-open section incomplete in " + name);
         }
-        this.dataBlockIndexReader = new HFileBlockIndex.BlockIndexReader(indexBlock);
+        this.dataBlockIndexReader = new HFileBlockIndex.BlockIndexReader(indexBlock, trailer.getNumDataIndexLevels());
         this.fileInfo = HFileInfo.parse(infoBlock);
         if (bloomMeta.containsKey("chunk0")) {
             // chunk0=offset:<o> onDiskSize:<n>
@@ -129,10 +139,106 @@ public class HFileReaderImpl implements HFile.Reader {
         return loadOnOpenBlocks;
     }
 
+    public int getMetaIndexEntries() {
+        return metaIndexEntries;
+    }
+
     @Override
     public KeyValue getFirstKey() {
-        List<HFileBlockIndex.Entry> e = dataBlockIndexReader.getEntries();
+        List<HFileBlockIndex.Entry> e = dataBlockIndexReader.getRootEntries();
         return e.isEmpty() ? null : e.get(0).getFirstKey();
+    }
+
+    /**
+     * Walks down the block index (CellBasedKeyBlockIndexReader.loadDataBlockWithScanInfo): binary search in
+     * the root, then in every index block of the next level, until an entry names a data block.
+     */
+    HFileBlockIndex.Entry seekToDataBlock(Cell key, boolean cacheBlocks, ReadTrace trace) throws IOException {
+        List<HFileBlockIndex.Entry> entries = dataBlockIndexReader.getRootEntries();
+        int levels = dataBlockIndexReader.getNumLevels();
+        String where = "root IDXROOT2 (in memory, " + entries.size() + " entries)";
+        for (int level = 1; ; level++) {
+            int i = HFileBlockIndex.binarySearch(entries, key);
+            HFileBlockIndex.Entry e = entries.get(i);
+            boolean dataBlock = level == levels;
+            if (trace != null) {
+                trace.add("      block index level " + level + "/" + levels + ", " + where + ": key "
+                        + KeyValueCodec.encodeKey(key) + " -> entry #" + i + " (first key "
+                        + KeyValueCodec.encodeKey(e.getFirstKey()) + ") -> " + (dataBlock ? "data block"
+                        : level + 1 == levels ? "leaf index block" : "intermediate index block") + " @"
+                        + e.getOffset());
+            }
+            if (dataBlock) {
+                return e;
+            }
+            HFileBlock b = readBlock(e.getOffset(), cacheBlocks, trace);
+            entries = b.getIndexEntries();
+            where = b.getBlockType().getMagic() + " @" + b.getOffset() + " (" + entries.size() + " entries)";
+        }
+    }
+
+    /** The next data block after b in file order; index and Bloom blocks in between are skipped. */
+    HFileBlock readNextDataBlock(HFileBlock b, boolean cacheBlocks, ReadTrace trace) throws IOException {
+        long offset = b.getOffset() + b.getOnDiskSizeWithHeader();
+        while (offset <= trailer.getLastDataBlockOffset()) {
+            HFileBlock next = readBlock(offset, cacheBlocks, trace);
+            if (next.getBlockType() == BlockType.DATA) {
+                return next;
+            }
+            if (trace != null) {
+                trace.add("      skip " + next.getBlockType().getMagic() + " @" + offset
+                        + " (index block between the data blocks)");
+            }
+            offset += next.getOnDiskSizeWithHeader();
+        }
+        return null;
+    }
+
+    /** All data block entries, read from the leaves of the index (for tools; a reader never needs them all). */
+    public synchronized List<HFileBlockIndex.Entry> getDataBlockEntries() throws IOException {
+        if (dataBlockEntries == null) {
+            List<HFileBlockIndex.Entry> r = new ArrayList<>();
+            collect(dataBlockIndexReader.getRootEntries(), 1, r);
+            dataBlockEntries = Collections.unmodifiableList(r);
+        }
+        return dataBlockEntries;
+    }
+
+    private void collect(List<HFileBlockIndex.Entry> entries, int level, List<HFileBlockIndex.Entry> out)
+            throws IOException {
+        if (level == dataBlockIndexReader.getNumLevels()) {
+            out.addAll(entries);
+            return;
+        }
+        for (HFileBlockIndex.Entry e : entries) {
+            collect(readBlock(e.getOffset(), false, null).getIndexEntries(), level + 1, out);
+        }
+    }
+
+    /** Index block at offset (for tools that draw the tree). */
+    public HFileBlock readIndexBlock(long offset) throws IOException {
+        return readBlock(offset, false, null);
+    }
+
+    @Override
+    public int getDataBlockCount() throws IOException {
+        return getDataBlockEntries().size();
+    }
+
+    /**
+     * Corresponds to midKey(): first key of the middle data block - where a region would be split. With a
+     * multi-level index the root names the leaf block and the entry in it; otherwise the middle root entry.
+     */
+    public KeyValue midKey() throws IOException {
+        List<HFileBlockIndex.Entry> root = dataBlockIndexReader.getRootEntries();
+        if (root.isEmpty()) {
+            return null;
+        }
+        if (dataBlockIndexReader.getMidLeafBlockOffset() < 0) {
+            return root.get((root.size() - 1) / 2).getFirstKey();
+        }
+        return readBlock(dataBlockIndexReader.getMidLeafBlockOffset(), false, null).getIndexEntries()
+                .get(dataBlockIndexReader.getMidKeyEntry()).getFirstKey();
     }
 
     @Override
@@ -161,7 +267,9 @@ public class HFileReaderImpl implements HFile.Reader {
             return b;
         }
         b = HFileBlock.read(in, offset, name);
-        b.getCells();  // parse once, the cache keeps the parsed cells
+        if (b.getBlockType() == BlockType.DATA) {
+            b.getCells();  // parse once, the cache keeps the parsed cells
+        }
         if (trace != null) {
             trace.add("      block @" + offset + ": BlockCache " + (cache == null ? "off" : "MISS")
                     + " -> read " + b.getOnDiskSizeWithHeader() + " bytes from HDFS (pread)");
@@ -184,14 +292,14 @@ public class HFileReaderImpl implements HFile.Reader {
 
     @Override
     public String toString() {
-        return "HFileReader{" + name + ", entries=" + getEntries() + ", blocks=" + trailer.getDataIndexCount() + "}";
+        return "HFileReader{" + name + ", entries=" + getEntries() + ", indexLevels=" + trailer.getNumDataIndexLevels() + "}";
     }
 
     /** Corresponds to HFileReaderImpl.HFileScannerImpl. */
     private class HFileScannerImpl implements HFileScanner {
         private final boolean cacheBlocks;
         private final ReadTrace trace;
-        private int blockIdx = -1;
+        private HFileBlock curBlock;
         private List<KeyValue> cells;
         private int pos;
 
@@ -200,26 +308,26 @@ public class HFileReaderImpl implements HFile.Reader {
             this.trace = trace;
         }
 
-        private boolean loadBlock(int idx) throws IOException {
-            List<HFileBlockIndex.Entry> entries = dataBlockIndexReader.getEntries();
-            if (idx >= entries.size()) {
-                cells = null;
-                return false;
+        private void setBlock(HFileBlock b) throws IOException {
+            curBlock = b;
+            cells = b == null ? null : b.getCells();
+            if (b != null && trace != null) {
+                trace.add("      data block @" + b.getOffset() + " (first key "
+                        + KeyValueCodec.encodeKey(cells.get(0)) + ")");
             }
-            HFileBlockIndex.Entry e = entries.get(idx);
-            if (trace != null) {
-                trace.add("      data block #" + idx + " (first key " + KeyValueCodec.encodeKey(e.getFirstKey()) + ")");
-            }
-            cells = readBlock(e.getOffset(), cacheBlocks, trace).getCells();
-            blockIdx = idx;
-            return true;
+        }
+
+        private boolean nextBlock() throws IOException {
+            setBlock(readNextDataBlock(curBlock, cacheBlocks, trace));
+            return cells != null;
         }
 
         @Override
         public boolean seekTo() throws IOException {
-            if (!loadBlock(0)) {
+            if (trailer.getFirstDataBlockOffset() < 0) {
                 return false;
             }
+            setBlock(readBlock(trailer.getFirstDataBlockOffset(), cacheBlocks, trace));
             pos = 0;
             return !cells.isEmpty();
         }
@@ -229,13 +337,9 @@ public class HFileReaderImpl implements HFile.Reader {
             if (dataBlockIndexReader.getRootBlockCount() == 0) {
                 return false;
             }
-            int idx = dataBlockIndexReader.rootBlockContainingKey(key);
-            if (trace != null) {
-                trace.add("      block index: key " + KeyValueCodec.encodeKey(key) + " -> data block #" + idx + " of "
-                        + dataBlockIndexReader.getRootBlockCount());
-            }
-            if (blockIdx != idx || cells == null) {
-                loadBlock(idx);
+            HFileBlockIndex.Entry e = seekToDataBlock(key, cacheBlocks, trace);
+            if (curBlock == null || cells == null || curBlock.getOffset() != e.getOffset()) {
+                setBlock(readBlock(e.getOffset(), cacheBlocks, trace));
             }
             return positionAtOrAfter(key, 0);
         }
@@ -262,7 +366,7 @@ public class HFileReaderImpl implements HFile.Reader {
             }
             pos = lo;
             while (pos >= cells.size()) {
-                if (!loadBlock(blockIdx + 1)) {
+                if (!nextBlock()) {
                     return false;
                 }
                 pos = 0;
@@ -277,7 +381,7 @@ public class HFileReaderImpl implements HFile.Reader {
             }
             pos++;
             while (pos >= cells.size()) {
-                if (!loadBlock(blockIdx + 1)) {
+                if (!nextBlock()) {
                     return false;
                 }
                 pos = 0;

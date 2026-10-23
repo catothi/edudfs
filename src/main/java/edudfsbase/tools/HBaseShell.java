@@ -69,6 +69,14 @@ public class HBaseShell {
     public static void main(String[] args) throws Exception {
         Log.quiet = !Boolean.getBoolean("edudfs.verbose");
         Connection conn = ConnectionFactory.createConnection();
+        try {
+            conn.checkMasterReachable();
+        } catch (IOException e) {
+            System.err.println("ERROR: " + e.getMessage() + ".");
+            System.err.println("Is EduDFSBase running? Start EduDFS (./hdfs minicluster) and then"
+                    + " EduDFSBase (./hbase minicluster) first.");
+            System.exit(1);
+        }
         HBaseShell shell = new HBaseShell(conn, System.out);
         if (args.length > 1 && args[0].equals("-e")) {  // EduDFSBase: ./hbase shell -e "command"
             shell.execute(String.join(" ", Arrays.copyOfRange(args, 1, args.length)));

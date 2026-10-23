@@ -10,10 +10,12 @@ import edudfsbase.util.BloomFilterChunk;
 import edudfsbase.util.BloomFilterUtil;
 import edudfsbase.util.Bytes;
 import edudfs.common.Log;
+import edudfs.protocol.HdfsFileStatus;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -35,12 +37,16 @@ import java.util.TreeSet;
  *     -s          statistics: rows, columns, cells per type        (original, extended)
  *     -r row      only this row (with -p/--table); with --bloom: what does the filter say for the row?
  *     -v          verbose = -m -b -s                              (original: verbose output)
- *     --layout    physical map of the file: which block lies where (EduDFSBase)
+ *     --layout    physical map of the file: which block lies where, by section (EduDFSBase)
+ *     --tree      the block index as a tree: root -&gt; intermediate -&gt; leaf -&gt; data blocks (EduDFSBase)
+ *     --offset n  the block at / containing byte n, every line with its byte offset (EduDFSBase)
+ *     --dump      the whole file, every line with line number and byte offset - next to an editor (EduDFSBase)
+ *     --html out  interactive picture of the file: block map, B+ tree, lookup of a row (EduDFSBase)
  *     --table     the cells as a table, with the data block they are in (EduDFSBase)
  *     --grid      "wide column" view: one line per row, one column per family:qualifier (EduDFSBase)
  *     --bloom     the Bloom filter's bit array as a picture (EduDFSBase)
  * </pre>
- * Without options: --layout -m.
+ * Without options: --layout -m (-m contains a shortened --tree).
  */
 public class HFilePrettyPrinter {
 
@@ -55,6 +61,10 @@ public class HFilePrettyPrinter {
     private boolean printTable;
     private boolean printGrid;
     private boolean printBloom;
+    private boolean printTree;
+    private boolean printDump;
+    private long offset = -1;
+    private String htmlFile;
     private byte[] row;
 
     public HFilePrettyPrinter(PrintStream out) {
@@ -70,6 +80,7 @@ public class HFilePrettyPrinter {
         List<String> files = new ArrayList<>();
         boolean any = false;
         for (int i = 0; i < args.length; i++) {
+            any |= args[i].startsWith("-") && !args[i].equals("-f") && !args[i].equals("-r");
             switch (args[i]) {
                 case "-m" -> printMeta = true;
                 case "-b" -> printBlockIndex = true;
@@ -82,6 +93,10 @@ public class HFilePrettyPrinter {
                 case "--table" -> printTable = true;
                 case "--grid" -> printGrid = true;
                 case "--bloom" -> printBloom = true;
+                case "--tree" -> printTree = true;
+                case "--dump" -> printDump = true;
+                case "--offset" -> offset = Long.parseLong(args[++i]);
+                case "--html" -> htmlFile = args[++i];
                 case "-r" -> row = Bytes.toBytesBinary(args[++i]);
                 case "-f" -> files.add(args[++i]);
                 default -> {
@@ -92,7 +107,6 @@ public class HFilePrettyPrinter {
                     files.add(args[i]);
                 }
             }
-            any |= args[i].startsWith("-") && !args[i].equals("-f") && !args[i].equals("-r");
         }
         if (files.isEmpty()) {
             usage();
@@ -103,7 +117,27 @@ public class HFilePrettyPrinter {
         }
         HFileSystem fs = null;
         try {
+            List<String> expanded = new ArrayList<>();
             for (String f : files) {
+                if (f.contains("*") && !f.startsWith("file:")) {
+                    if (fs == null) {
+                        fs = new HFileSystem();
+                    }
+                    List<String> matches = glob(fs, f);
+                    if (matches.isEmpty()) {
+                        out.println("ERROR: no HFile matches " + f);
+                        return 1;
+                    }
+                    expanded.addAll(matches);
+                } else {
+                    expanded.add(f);
+                }
+            }
+            if (htmlFile != null && expanded.size() > 1) {
+                out.println("ERROR: --html needs exactly one HFile, " + expanded.size() + " match: " + expanded);
+                return 1;
+            }
+            for (String f : expanded) {
                 PositionedReadable in;
                 if (f.startsWith("file:")) {
                     in = PositionedReadable.of(new File(f.substring(5)));
@@ -125,29 +159,88 @@ public class HFilePrettyPrinter {
         return 0;
     }
 
+    /**
+     * EduDFSBase: '*' in an HDFS path, e.g. /hbase/data/default/TestTable/&#42;/info/&#42; - so that the commands in
+     * the README work without copying the random region and file names. Hidden entries (.tmp, .regioninfo) are
+     * skipped; the last component only matches files.
+     */
+    private static List<String> glob(HFileSystem fs, String pattern) throws IOException {
+        List<String> current = new ArrayList<>(List.of(""));
+        String[] parts = pattern.substring(1).split("/");
+        for (int i = 0; i < parts.length; i++) {
+            boolean last = i == parts.length - 1;
+            List<String> next = new ArrayList<>();
+            for (String dir : current) {
+                if (!parts[i].contains("*")) {
+                    next.add(dir + "/" + parts[i]);
+                    continue;
+                }
+                if (!fs.exists(dir.isEmpty() ? "/" : dir)) {
+                    continue;
+                }
+                String regex = ("\\Q" + parts[i] + "\\E").replace("*", "\\E.*\\Q");
+                for (HdfsFileStatus st : fs.listStatus(dir.isEmpty() ? "/" : dir)) {
+                    String name = st.getPath().substring(st.getPath().lastIndexOf('/') + 1);
+                    if (!name.startsWith(".") && name.matches(regex) && st.isDir() != last) {
+                        next.add(st.getPath());
+                    }
+                }
+            }
+            current = next;
+        }
+        List<String> files = new ArrayList<>();
+        for (String f : current) {
+            if (fs.exists(f) && !fs.getFileStatus(f).isDir()) {
+                files.add(f);
+            }
+        }
+        java.util.Collections.sort(files);
+        return files;
+    }
+
     private void usage() {
-        out.println("Usage: hbase hfile [-m] [-b] [-h] [-p [-e]] [-s] [-r row] [-v] [--layout] [--table] [--grid]"
-                + " [--bloom] -f <path in HDFS | file:local-path>");
+        out.println("Usage: hbase hfile [-m] [-b] [-h] [-p [-e]] [-s] [-r row] [-v] [--layout] [--tree] [--offset n]"
+                + " [--dump] [--html out.html] [--table] [--grid] [--bloom] -f <path in HDFS | file:local-path>");
+        out.println("  The HDFS path may contain '*': -f '/hbase/data/default/TestTable/*/info/*' (quote it)");
+        out.println("  -m meta (trailer, FileInfo, index tree, Bloom)   -b data block index   -h block headers");
+        out.println("  -p cells (-e keys only)   -s statistics   -r row: only this row   -v = -m -b -s");
+        out.println("  --layout  which block lies at which offset, by section");
+        out.println("  --tree    the block index (B+ tree) completely: root -> intermediate -> leaf -> data blocks");
+        out.println("  --offset  the block at / containing this byte offset, every line with its offset");
+        out.println("  --dump    the whole file with line numbers and byte offsets (to read next to an editor)");
+        out.println("  --html    write an interactive HTML picture of the file (open it in a browser)");
+        out.println("  --table / --grid  cells as a table / as a wide-column grid   --bloom  Bloom bit array");
     }
 
     private void print(HFileReaderImpl r) throws IOException {
         out.println("Scanning -> " + r.getName() + "  (" + r.length() + " bytes)");
+        HFileBlockMap map = new HFileBlockMap(r);
         if (printLayout) {
-            printLayout(r);
+            printLayout(r, map);
+        }
+        if (printTree) {
+            out.println();
+            printTree(r, map, true);
+        }
+        if (offset >= 0) {
+            printOffset(r, map, offset);
+        }
+        if (printDump) {
+            printDump(r, map);
         }
         if (printBlockHeaders) {
-            printBlockHeaders(r);
+            printBlockHeaders(map);
         }
         if (printMeta) {
-            printMeta(r);
+            printMeta(r, map);
         }
         if (printBlockIndex) {
-            printBlockIndex(r);
+            printBlockIndex(r, map);
         }
         if (printKeyValues || printTable || printGrid || printStats) {
             List<Cell> cells = new ArrayList<>();
             List<Integer> blocks = new ArrayList<>();
-            List<HFileBlockIndex.Entry> idx = r.getDataBlockIndexReader().getEntries();
+            List<HFileBlockIndex.Entry> idx = r.getDataBlockEntries();
             for (int b = 0; b < idx.size(); b++) {
                 for (KeyValue kv : r.readBlock(idx.get(b).getOffset(), false, null).getCells()) {
                     if (row == null || Bytes.equals(row, kv.getRow())) {
@@ -174,78 +267,192 @@ public class HFilePrettyPrinter {
         if (printBloom) {
             printBloom(r);
         }
+        if (htmlFile != null) {
+            new HFileHtmlExporter(r, map).write(new File(htmlFile));
+            out.println();
+            out.println("HTML picture written to " + new File(htmlFile).getAbsolutePath() + " - open it in a browser.");
+        }
     }
 
     // ------------------------------------------------------------- layout
-    private void printLayout(HFileReaderImpl r) throws IOException {
+    private void printLayout(HFileReaderImpl r, HFileBlockMap map) {
         out.println();
         out.println("Physical layout (offset = byte position in the file):");
         out.printf("  %8s %7s  %-9s %s%n", "offset", "bytes", "magic", "content");
-        long offset = 0;
-        int dataBlock = 0;
-        FixedFileTrailer t = r.getTrailer();
-        long end = r.length() - FixedFileTrailer.TRAILER_SIZE;
-        boolean loadOnOpenShown = false;
-        while (offset < end) {
-            if (offset == t.getLoadOnOpenDataOffset() && !loadOnOpenShown) {
-                out.println("  -------- load-on-open section (read completely when the file is opened) --------");
-                loadOnOpenShown = true;
+        HFileBlockMap.Section section = null;
+        for (HFileBlockMap.Item i : map.getItems()) {
+            if (i.section != section) {
+                section = i.section;
+                String title = "-------- " + section.title + " (" + section.description + ") ";
+                out.println("  " + title + "-".repeat(Math.max(4, 100 - title.length())));
             }
-            HFileBlock b = HFileBlock.read(r.getInput(), offset, r.getName());
-            String content = switch (b.getBlockType()) {
-                case DATA -> {
-                    List<KeyValue> cells = b.getCells();
-                    yield "data block #" + dataBlock++ + ": " + cells.size() + " cells, "
-                            + Bytes.toStringBinary(cells.get(0).getRow()) + " .. "
-                            + Bytes.toStringBinary(cells.get(cells.size() - 1).getRow());
-                }
-                case BLOOM_CHUNK -> {
-                    BloomFilterChunk bloom = r.getGeneralBloomFilter();
-                    yield "Bloom bit array: " + bloom.getBitSize() + " bits, " + bloom.getKeyCount() + " keys, "
-                            + String.format(Locale.ROOT, "%.0f%% of bits set", 100 * bloom.fillRatio());
-                }
-                case ROOT_INDEX -> "block index: " + b.getLines().size()
-                        + " entries (first key + offset per data block)";
-                case FILE_INFO -> "FileInfo: " + b.getLines().size() + " key/value pairs";
-                case GENERAL_BLOOM_META -> "Bloom metadata: hash count, key count, where the bit array is";
-                default -> "";
-            };
-            out.printf("  %8d %7d  %-9s %s%n", offset, b.getOnDiskSizeWithHeader(), b.getBlockType().getMagic(),
-                    content);
-            offset += b.getOnDiskSizeWithHeader();
+            out.printf("  %8d %7d  %-9s %s%n", i.offset, i.size, i.type.getMagic(), i.description);
         }
-        out.printf("  %8d %7d  %-9s %s%n", end, FixedFileTrailer.TRAILER_SIZE, BlockType.TRAILER.getMagic(),
-                "fixed trailer: loadOnOpenDataOffset=" + t.getLoadOnOpenDataOffset() + ", " + t.getEntryCount()
-                        + " cells, version 3.3 <- the reader starts here");
         out.println("  Every block = header (" + HFileBlock.HEADER_SIZE + " bytes: magic, onDiskSizeWithoutHeader,"
-                + " prevBlockOffset, checksum) + body.");
+                + " prevBlockOffset, checksum) + body. File size " + r.length() + " bytes.");
     }
 
-    private void printBlockHeaders(HFileReaderImpl r) throws IOException {
+    private void printBlockHeaders(HFileBlockMap map) {
         out.println();
         out.println("Block headers:");
-        long offset = 0;
-        long end = r.length() - FixedFileTrailer.TRAILER_SIZE;
-        while (offset < end) {
-            HFileBlock b = HFileBlock.read(r.getInput(), offset, r.getName());
-            out.printf("  @%-8d %s onDiskSizeWithoutHeader=%d prevBlockOffset=%d%n", offset,
-                    b.getBlockType().getMagic(), b.getOnDiskSizeWithoutHeader(), b.getPrevBlockOffset());
-            offset += b.getOnDiskSizeWithHeader();
+        for (HFileBlockMap.Item i : map.getItems()) {
+            if (i.block != null) {
+                out.printf("  @%-8d %s onDiskSizeWithoutHeader=%d prevBlockOffset=%d%n", i.offset, i.type.getMagic(),
+                        i.block.getOnDiskSizeWithoutHeader(), i.block.getPrevBlockOffset());
+            }
+        }
+    }
+
+    // --------------------------------------------------------------- tree
+    /**
+     * The block index as a tree. full = false (for -m): the root lists all its entries but only the first and
+     * the last are expanded; below the root only the first and the last entry of each block are shown.
+     */
+    private void printTree(HFileReaderImpl r, HFileBlockMap map, boolean full) throws IOException {
+        FixedFileTrailer t = r.getTrailer();
+        int levels = t.getNumDataIndexLevels();
+        out.println("Block index as a B+ tree (numDataIndexLevels=" + levels + ", " + switch (levels) {
+            case 1 -> "root -> data blocks";
+            case 2 -> "root -> leaf -> data blocks";
+            default -> "root -> " + "intermediate -> ".repeat(levels - 2) + "leaf -> data blocks";
+        } + "; hfile.index.block.max.size=" + HBaseConfiguration.INDEX_BLOCK_MAX_SIZE + "):");
+        HFileBlockMap.Item root = map.at(t.getLoadOnOpenDataOffset());
+        out.println("  " + BlockType.ROOT_INDEX.getMagic() + " @" + root.offset + "  (root index, load-on-open section"
+                + " - always in memory, " + r.getDataBlockIndexReader().getRootBlockCount() + " entries)");
+        printChildren(r, map, r.getDataBlockIndexReader().getRootEntries(), 1, levels, "  ", full);
+        if (!full && levels > 1) {
+            out.println("  (shortened - the whole tree: --tree, as a picture: --html out.html)");
+        }
+    }
+
+    private void printChildren(HFileReaderImpl r, HFileBlockMap map, List<HFileBlockIndex.Entry> entries, int level,
+                               int levels, String indent, boolean full) throws IOException {
+        int n = entries.size();
+        for (int k = 0; k < n; k++) {
+            if (!full && level > 1 && n > 3 && k == 1) {
+                out.println(indent + "├── ... " + (n - 2) + " more entries ...");
+                k = n - 1;
+            }
+            HFileBlockIndex.Entry e = entries.get(k);
+            boolean last = k == n - 1;
+            HFileBlockMap.Item child = map.at(e.getOffset());
+            String target = child == null ? "? @" + e.getOffset()
+                    : child.type.getMagic() + " @" + e.getOffset() + "  (" + child.role
+                    + (child.type == BlockType.DATA ? ", " + child.size + " bytes" : ", " + child.block.getIndexEntries().size()
+                    + " entries") + ")";
+            out.println(indent + (last ? "└── " : "├── ") + "[" + k + "] " + KeyValueCodec.encodeKey(e.getFirstKey())
+                    + "  ->  " + target);
+            if (level < levels && child != null && (full || k == 0 || last)) {
+                printChildren(r, map, child.block.getIndexEntries(), level + 1, levels,
+                        indent + (last ? "    " : "│   "), full);
+            }
+        }
+    }
+
+    // ------------------------------------------------------------- offset
+    /** The block at or containing the offset, every line with its byte offset; the line with the offset marked. */
+    private void printOffset(HFileReaderImpl r, HFileBlockMap map, long off) throws IOException {
+        out.println();
+        HFileBlockMap.Item i = map.containing(off);
+        if (i == null) {
+            out.println("Offset " + off + " is outside the file (0.." + (r.length() - 1) + ").");
+            return;
+        }
+        out.println(off == i.offset ? "Offset " + off + " is the start of " + i.type.getMagic() + " (" + i.role + ", "
+                + i.size + " bytes, " + i.section.title + ")."
+                : "Offset " + off + " lies inside " + i.type.getMagic() + " @" + i.offset + " (" + i.role + ", "
+                + i.size + " bytes) - byte " + (off - i.offset) + " of the block.");
+        out.println("  " + i.description);
+        byte[] b = new byte[i.size];
+        r.getInput().readFully(i.offset, b, 0, i.size);
+        String text = new String(b, StandardCharsets.US_ASCII);
+        out.printf("  %8s  %s%n", "offset", "content");
+        long pos = i.offset;
+        boolean first = true;
+        for (String line : text.split("\n", -1)) {
+            long lineEnd = pos + line.length() + 1;
+            if (pos >= i.end()) {
+                break;
+            }
+            String mark = off >= pos && off < lineEnd ? " >" : "  ";
+            String shown = line.isBlank() && line.length() > 20 ? "(" + line.length() + " spaces padding)" : line;
+            out.printf("%s%8d  %s%n", mark, pos, shown);
+            if (first && i.type != BlockType.TRAILER) {
+                out.printf("  %8s  %s%n", "", "^ header: magic = block type, onDiskSizeWithoutHeader = bytes of the body,"
+                        + " prevBlockOffset = previous " + i.type.getMagic() + " block (-1 = none), checksum = CRC32"
+                        + " of the body");
+            } else if (i.type != BlockType.TRAILER) {
+                String hint = explainLine(map, i, line);
+                if (hint != null) {
+                    out.printf("  %8s  %s%n", "", hint);
+                }
+            }
+            first = false;
+            pos = lineEnd;
+        }
+    }
+
+    /** For index entries: what the offset points to. */
+    private static String explainLine(HFileBlockMap map, HFileBlockMap.Item i, String line) {
+        if (line.startsWith("offset=")) {
+            long target = Long.parseLong(line.substring(7, line.indexOf(' ')));
+            return "^ child: " + map.nameOf(target) + " (its first key follows firstKey=)";
+        }
+        if (line.startsWith(HFileBlockIndex.NUM_ENTRIES)) {
+            return "^ number of entries (original: int + \"secondary index\" with the position of every entry)";
+        }
+        if (line.startsWith(HFileBlockIndex.MID_KEY)) {
+            return "^ mid-key metadata: leaf block and entry of the middle data block (region split point)";
+        }
+        return null;
+    }
+
+    // --------------------------------------------------------------- dump
+    /** The whole file line by line: line number (as in an editor), byte offset, text; block starts marked. */
+    private void printDump(HFileReaderImpl r, HFileBlockMap map) throws IOException {
+        out.println();
+        out.println("Whole file (line = line number in an editor, offset = byte position):");
+        byte[] b = new byte[(int) r.length()];
+        r.getInput().readFully(0, b, 0, b.length);
+        String text = new String(b, StandardCharsets.US_ASCII);
+        out.printf("  %6s %8s  %s%n", "line", "offset", "content");
+        long pos = 0;
+        int lineNo = 1;
+        for (String line : text.split("\n", -1)) {
+            if (pos >= b.length) {
+                break;
+            }
+            HFileBlockMap.Item i = map.at(pos);
+            String shown = line.isBlank() && line.length() > 20 ? "(" + line.length() + " spaces padding)" : line;
+            if (i != null) {
+                out.printf("  %6s %8s  ---- %s @%d: %s%n", "", "", i.type.getMagic(), i.offset, i.description);
+            }
+            out.printf("  %6d %8d  %s%n", lineNo++, pos, shown);
+            pos += line.length() + 1;
         }
     }
 
     // --------------------------------------------------------------- meta
-    private void printMeta(HFileReaderImpl r) {
+    private void printMeta(HFileReaderImpl r, HFileBlockMap map) throws IOException {
         out.println();
-        out.println("Trailer:");
+        out.println("Trailer (" + FixedFileTrailer.TRAILER_SIZE + " bytes at offset " + (r.length()
+                - FixedFileTrailer.TRAILER_SIZE) + " = file size - " + FixedFileTrailer.TRAILER_SIZE + "):");
         for (Map.Entry<String, String> e : r.getTrailer().toMap().entrySet()) {
-            out.println("    " + e.getKey() + "=" + e.getValue());
+            String kv = e.getKey() + "=" + e.getValue();
+            out.printf("    %-42s %s%n", kv, explainTrailer(e.getKey(), e.getValue(), map));
         }
+        out.printf("    %-42s %s%n", "majorVersion=" + FixedFileTrailer.MAJOR_VERSION + " minorVersion="
+                + FixedFileTrailer.MINOR_VERSION, "(HFile format version 3, last line of the trailer)");
         out.println("Fileinfo:");
         for (Map.Entry<String, String> e : r.getHFileInfo().asMap().entrySet()) {
             out.println("    " + e.getKey() + " = " + e.getValue() + explainFileInfo(e.getKey()));
         }
-        out.println("Mid-key: (not computed in EduDFSBase - the original uses it to split regions)");
+        KeyValue mid = r.midKey();
+        out.println("Mid-key: " + (mid == null ? "-" : KeyValueCodec.encodeKey(mid))
+                + "   (first key of the middle data block - a region split would happen at this row)");
+        out.println();
+        printTree(r, map, false);
+        out.println();
         BloomFilterChunk bloom = r.getGeneralBloomFilter();
         if (bloom == null) {
             out.println("Bloom filter:\n    Not present");
@@ -267,25 +474,57 @@ public class HFilePrettyPrinter {
         }
     }
 
+    /** What a trailer field means; for offsets: which block lies there. */
+    private static String explainTrailer(String key, String value, HFileBlockMap map) {
+        String target = "";
+        if (key.endsWith("Offset")) {
+            HFileBlockMap.Item i = map.at(Long.parseLong(value));
+            target = i == null ? " -> (no block)" : " -> " + i.type.getMagic() + " " + i.role;
+        }
+        return "(" + switch (key) {
+            case "fileInfoOffset" -> "where the FileInfo block is" + target;
+            case "loadOnOpenDataOffset" -> "start of the load-on-open section = ROOT INDEX OFFSET" + target
+                    + "; read from here to the trailer when the file is opened";
+            case "dataIndexCount" -> "entries in the ROOT level of the data index (= data blocks only with 1 level)";
+            case "uncompressedDataIndexSize" -> "bytes of all data index blocks: leaf + intermediate + root";
+            case "metaIndexCount" -> "entries of the meta block index - 0: no META blocks";
+            case "totalUncompressedBytes" -> "all blocks + trailer before compression (no compression: = file size)";
+            case "entryCount" -> "number of cells in the file";
+            case "compressionCodec" -> "compression of the blocks (original: NONE, SNAPPY, LZ4, ZSTD, GZ)";
+            case "numDataIndexLevels" -> "height of the index tree: 1 = root -> data, 2 = root -> leaf -> data,"
+                    + " 3 = root -> intermediate -> leaf -> data";
+            case "firstDataBlockOffset" -> "first data block" + target + "; a full scan starts here";
+            case "lastDataBlockOffset" -> "last data block" + target + "; a scan stops after it";
+            case "comparatorClassName" -> "sort order: row, family, qualifier, timestamp descending, type";
+            default -> "";
+        } + ")";
+    }
+
     private static String explainFileInfo(String key) {
         return switch (key) {
-            case HFileInfo.MAX_SEQ_ID_KEY -> "   (all edits up to this sequence ID are in this file)";
+            case HFileInfo.MAX_SEQ_ID_KEY -> "   (all edits up to this sequence ID are in this file - WAL replay"
+                    + " skips them)";
             case HFileInfo.TIMERANGE_KEY -> "   (smallest..largest timestamp)";
             case HFileInfo.MAJOR_COMPACTION_KEY -> "   (true: no delete markers left)";
+            case HFileInfo.LASTKEY -> "   (last key of the file; the first key is the first root index entry)";
             default -> "";
         };
     }
 
-    private void printBlockIndex(HFileReaderImpl r) {
+    private void printBlockIndex(HFileReaderImpl r, HFileBlockMap map) throws IOException {
         out.println();
-        out.println("Block Index (root level, " + r.getDataBlockIndexReader().getRootBlockCount() + " entries):");
+        List<HFileBlockIndex.Entry> entries = r.getDataBlockEntries();
+        int levels = r.getTrailer().getNumDataIndexLevels();
+        out.println("Data block index (" + entries.size() + " data blocks" + (levels == 1 ? ", all in the root"
+                : ", read from the leaf level of a " + levels + "-level index; --tree shows the tree") + "):");
         out.printf("  %5s %8s %7s  %s%n", "block", "offset", "bytes", "first key");
         int i = 0;
-        for (HFileBlockIndex.Entry e : r.getDataBlockIndexReader().getEntries()) {
+        for (HFileBlockIndex.Entry e : entries) {
             out.printf("  %5d %8d %7d  %s%n", i++, e.getOffset(), e.getOnDiskSize(),
                     KeyValueCodec.encodeKey(e.getFirstKey()));
         }
-        out.println("  A Get for row R reads only the block whose first key is the last one <= R (binary search).");
+        out.println("  A get for row R reads only the block whose first key is the last one < R: binary search in the"
+                + " root, then in one block per level.");
     }
 
     // ------------------------------------------------------- table, grid
@@ -349,7 +588,7 @@ public class HFilePrettyPrinter {
     }
 
     // -------------------------------------------------------------- stats
-    private void printStats(HFileReaderImpl r, List<Cell> cells) {
+    private void printStats(HFileReaderImpl r, List<Cell> cells) throws IOException {
         Map<String, Integer> perType = new TreeMap<>();
         TreeSet<String> rowSet = new TreeSet<>();
         TreeSet<String> colSet = new TreeSet<>();
@@ -380,7 +619,8 @@ public class HFilePrettyPrinter {
             out.println("    avg key length: " + keyLen / cells.size() + " bytes, avg value length: "
                     + valLen / cells.size() + " bytes (binary layout of the original)");
         }
-        out.println("    data blocks: " + r.getDataBlockIndexReader().getRootBlockCount() + ", file size: "
+        out.println("    data blocks: " + r.getDataBlockCount() + ", index levels: "
+                + r.getTrailer().getNumDataIndexLevels() + ", file size: "
                 + r.length() + " bytes");
     }
 

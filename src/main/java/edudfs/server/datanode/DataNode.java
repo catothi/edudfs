@@ -3,6 +3,7 @@ package edudfs.server.datanode;
 import edudfs.common.HdfsConfig;
 import edudfs.common.Log;
 import edudfs.protocol.Block;
+import edudfs.protocol.BlockLocalPathInfo;
 import edudfs.protocol.ClientDatanodeProtocol;
 import edudfs.protocol.DataTransferProtocol;
 import edudfs.protocol.DatanodeID;
@@ -209,6 +210,15 @@ public class DataNode implements InterDatanodeProtocol, ClientDatanodeProtocol {
             throw new IOException("Replica not found for " + b);
         }
         return r.getNumBytes();
+    }
+
+    @Override
+    public BlockLocalPathInfo getBlockLocalPathInfo(Block b) throws IOException {
+        ReplicaInfo r = data.getReplica(b.getBlockId());
+        if (r == null) {
+            throw new IOException("Replica not found for " + b);
+        }
+        return new BlockLocalPathInfo(r.toBlock(), data.getBlockFile(r).getPath(), data.getMetaFile(r).getPath());
     }
 
     // ============================================================ DNA_TRANSFER

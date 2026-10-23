@@ -367,6 +367,7 @@ public class HMaster {
             sb.append(String.format(Locale.ROOT, "  %-36s last report %.1f s ago, %d region(s), MemStore %d bytes,"
                             + " %d HFile(s)%n", sn, (now - serverManager.getLastReport(sn)) / 1000.0,
                     serverManager.getLoad(sn).size(), mem, files));
+            sb.append("      WALs ").append(CommonFSUtils.getWALDirectoryName(sn)).append('\n');
         }
         if (!serverManager.getDeadServers().isEmpty()) {
             sb.append("Dead RegionServers: ").append(serverManager.getDeadServers()).append('\n');
@@ -385,6 +386,8 @@ public class HMaster {
                         Bytes.toStringBinary(rs.getRegion().getStartKey()),
                         Bytes.toStringBinary(rs.getRegion().getEndKey()),
                         rs.getState(), rs.getServerName() == null ? "" : "on " + rs.getServerName()));
+                // not a column of hbase:meta: the directory follows from table and encoded name
+                sb.append("      dir ").append(CommonFSUtils.getRegionDir(rs.getRegion())).append('\n');
             }
         }
         synchronized (procedures) {

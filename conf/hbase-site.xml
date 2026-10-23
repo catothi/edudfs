@@ -51,6 +51,23 @@
     <description>HDFS block size of WAL files. The WAL is rolled at blocksize x hbase.regionserver.logroll.multiplier (0.5).</description>
   </property>
 
+  <!-- ============================================================= HFile -->
+  <property>
+    <name>hfile.index.block.max.size</name>
+    <value>512</value>
+    <description>
+      Size of an index block of the HFile block index (B+ tree) in bytes (original: 128 KB). A leaf index block
+      is written between the data blocks once it is this full; a root level larger than this gets intermediate
+      levels below it. ./hbase pe --rows=3000 gives a 3-level index.
+    </description>
+  </property>
+
+  <property>
+    <name>hfile.index.block.min.entries</name>
+    <value>4</value>
+    <description>Minimum number of entries per index block, also with long keys (original: 16).</description>
+  </property>
+
   <!-- ========================================================= read path -->
   <property>
     <name>io.storefile.bloom.error.rate</name>

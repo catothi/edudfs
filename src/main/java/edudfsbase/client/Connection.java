@@ -64,6 +64,20 @@ public class Connection implements Closeable {
         return master;
     }
 
+    /**
+     * EduDFSBase: one attempt to reach the master, without retries. The shell calls this at startup so
+     * that a missing cluster is reported at once instead of after minutes of silent retries.
+     */
+    public void checkMasterReachable() throws IOException {
+        try {
+            getMaster();
+        } catch (IOException e) {
+            resetMaster();
+            throw new IOException("Cannot reach the HMaster at " + HBaseConfiguration.HOSTNAME + ":"
+                    + HBaseConfiguration.MASTER_PORT + " (" + e.getClass().getSimpleName() + ")", e);
+        }
+    }
+
     synchronized void resetMaster() {
         master = null;
     }
@@ -142,7 +156,9 @@ public class Connection implements Closeable {
                             + " is not online (in transition)");
                 }
                 return callable.call(getClient(loc.getServerName()), loc);
-            } catch (DoNotRetryIOException e) {
+            } catch (DoNotRetryIOException | RetriesExhaustedException e) {
+                // RetriesExhaustedException: the master lookup already retried; retrying it again here
+                // would multiply the waiting time (15 x 15 attempts)
                 throw e;
             } catch (IOException e) {
                 last = e;
