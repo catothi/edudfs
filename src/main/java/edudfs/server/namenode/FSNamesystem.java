@@ -299,7 +299,8 @@ public class FSNamesystem {
             long pos = 0;
             for (BlockInfo b : file.getBlocks()) {
                 long len = b.getNumBytes();
-                if (pos + len > offset && pos < offset + length) {
+                boolean lastUc = b.getUnderConstructionFeature() != null;  // its length only the DataNodes know
+                if ((pos + len > offset || lastUc) && pos < offset + length) {
                     List<DatanodeDescriptor> locs = new ArrayList<>();
                     for (DatanodeStorageInfo s : b.getStorageInfos()) {
                         if (s.getState() == DatanodeStorage.State.NORMAL && s.getDatanodeDescriptor().isAlive()) {
@@ -313,8 +314,8 @@ public class FSNamesystem {
                 }
                 pos += len;
             }
-            // Simplification: readers only see the completed blocks of an open file
-            // (original: the client asks the DataNodes for the "visible length" of the last block).
+            // The file length covers the completed blocks; for an open file the client asks the
+            // DataNodes for the "visible length" of the last block (as in the original).
             return new LocatedBlocks(file.computeFileSize(false), file.isUnderConstruction(), result);
         } finally {
             readUnlock();

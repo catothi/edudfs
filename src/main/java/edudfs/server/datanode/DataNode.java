@@ -3,6 +3,7 @@ package edudfs.server.datanode;
 import edudfs.common.HdfsConfig;
 import edudfs.common.Log;
 import edudfs.protocol.Block;
+import edudfs.protocol.ClientDatanodeProtocol;
 import edudfs.protocol.DataTransferProtocol;
 import edudfs.protocol.DatanodeID;
 import edudfs.protocol.DatanodeInfo;
@@ -37,13 +38,14 @@ import java.util.UUID;
  *   <li>{@link DataXceiverServer}: data transfer (read/write/pipeline) over TCP</li>
  *   <li>{@link BPServiceActor}: heartbeats/block reports to the NameNode</li>
  *   <li>InterDatanodeProtocol (RMI, ipcPort): for block recovery</li>
+ *   <li>ClientDatanodeProtocol (RMI, ipcPort): visible length of a replica being written</li>
  * </ul>
  *
  * EduDFS: all DataNodes run on the same machine and read the same hdfs-site.xml.
  * So that each one still has "its own disks", each gets a root directory (hostRoot)
  * that represents its file system. E.g. "/data/1/dfs/dn" thus becomes "data/dn2/data/1/dfs/dn".
  */
-public class DataNode implements InterDatanodeProtocol {
+public class DataNode implements InterDatanodeProtocol, ClientDatanodeProtocol {
 
     private static final String LOG = "DataNode";
 
@@ -98,6 +100,7 @@ public class DataNode implements InterDatanodeProtocol {
         InterDatanodeProtocol stub = (InterDatanodeProtocol) UnicastRemoteObject.exportObject(this, 0);
         registry = LocateRegistry.createRegistry(id.getIpcPort());
         registry.rebind(InterDatanodeProtocol.NAME, stub);
+        registry.rebind(ClientDatanodeProtocol.NAME, stub);
         xserverThread.start();
         actorThread.start();
         Log.info(LOG, this + " started (uuid " + id.getDatanodeUuid() + ", " + data.getVolumes().size()
@@ -196,6 +199,16 @@ public class DataNode implements InterDatanodeProtocol {
         ReplicaInfo r = data.updateReplicaUnderRecovery(oldBlock, recoveryId, newLength);
         notifyNamenodeReceivedBlock(r);
         return r.getVolume().getStorageID();  // as in the original: the storageID of the replica
+    }
+
+    // =================================================== ClientDatanodeProtocol
+    @Override
+    public long getReplicaVisibleLength(Block b) throws IOException {
+        ReplicaInfo r = data.getReplica(b.getBlockId());
+        if (r == null) {
+            throw new IOException("Replica not found for " + b);
+        }
+        return r.getNumBytes();
     }
 
     // ============================================================ DNA_TRANSFER

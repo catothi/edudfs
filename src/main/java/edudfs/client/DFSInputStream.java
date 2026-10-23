@@ -3,6 +3,7 @@ package edudfs.client;
 import edudfs.common.ChecksumException;
 import edudfs.common.DataChecksum;
 import edudfs.common.Log;
+import edudfs.protocol.ClientDatanodeProtocol;
 import edudfs.protocol.DataTransferProtocol;
 import edudfs.protocol.DatanodeInfo;
 import edudfs.protocol.LocatedBlock;
@@ -18,7 +19,10 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.Socket;
+import java.rmi.NotBoundException;
+import java.rmi.registry.LocateRegistry;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -28,6 +32,11 @@ import java.util.Set;
  * directly from a DataNode. If a DataNode fails or returns corrupt data
  * (checksum error), the next DataNode is tried; corrupt replicas are
  * reported to the NameNode (reportBadBlocks).
+ *
+ * Open file (still being written): the NameNode only counts the completed blocks. As in the original
+ * (DFSInputStream.readBlockLength), the client asks a DataNode of the last block for its current
+ * length (ClientDatanodeProtocol.getReplicaVisibleLength) and can then also read what has been
+ * written - e.g. the WAL of a running HBase RegionServer.
  *
  * Besides sequential reading, the stream supports {@link #seek(long)} and positional reads
  * ("pread", {@link #read(long, byte[], int, int)}) as in the original (Seekable,
@@ -46,15 +55,44 @@ public class DFSInputStream extends InputStream {
     private DatanodeInfo currentNode;
     private long blockEnd = -1;
     private final Set<DatanodeInfo> deadNodes = new HashSet<>();
+    private final long fileLength;
+    /** The last block is still being written (RBW) - do not report checksum errors for it. */
+    private final LocatedBlock lastUcBlock;
 
     DFSInputStream(DFSClient dfsClient, String src) throws IOException {
         this.dfsClient = dfsClient;
         this.src = src;
         this.locatedBlocks = dfsClient.namenode.getBlockLocations(src, 0, Long.MAX_VALUE);
+        List<LocatedBlock> blocks = locatedBlocks.getLocatedBlocks();
+        LocatedBlock last = blocks.isEmpty() ? null : blocks.get(blocks.size() - 1);
+        if (locatedBlocks.isUnderConstruction() && last != null
+                && last.getStartOffset() >= locatedBlocks.getFileLength()) {
+            last.getBlock().setNumBytes(readBlockLength(last));
+            this.lastUcBlock = last;
+            this.fileLength = last.getStartOffset() + last.getBlock().getNumBytes();
+        } else {
+            this.lastUcBlock = null;
+            this.fileLength = locatedBlocks.getFileLength();
+        }
+    }
+
+    /** Corresponds to DFSInputStream.readBlockLength: ask the DataNodes of the pipeline. */
+    private long readBlockLength(LocatedBlock lb) {
+        for (DatanodeInfo dn : lb.getLocations()) {
+            try {
+                ClientDatanodeProtocol cdp = (ClientDatanodeProtocol) LocateRegistry
+                        .getRegistry(dn.getHostName(), dn.getIpcPort()).lookup(ClientDatanodeProtocol.NAME);
+                return cdp.getReplicaVisibleLength(lb.getBlock());
+            } catch (IOException | NotBoundException e) {
+                Log.warn("DFSClient", "Cannot get visible length of " + lb.getBlock() + " from " + dn + ": "
+                        + e.getMessage());
+            }
+        }
+        return 0;  // no DataNode reachable: the open block stays invisible
     }
 
     public long getFileLength() {
-        return locatedBlocks.getFileLength();
+        return fileLength;
     }
 
     /** Current position in the file (Seekable.getPos). */
@@ -132,8 +170,13 @@ public class DFSInputStream extends InputStream {
                 pos += n;
                 return n;
             } catch (ChecksumException e) {
-                Log.warn("DFSClient", e.getMessage() + " -> reporting bad replica, trying next DataNode");
-                dfsClient.reportBadBlock(currentBlock, currentNode);
+                if (currentBlock == lastUcBlock) {
+                    // the writer may just be rewriting the last partial chunk - not a corrupt replica
+                    Log.warn("DFSClient", e.getMessage() + " in a block being written -> trying next DataNode");
+                } else {
+                    Log.warn("DFSClient", e.getMessage() + " -> reporting bad replica, trying next DataNode");
+                    dfsClient.reportBadBlock(currentBlock, currentNode);
+                }
                 deadNodes.add(currentNode);
                 closeBlockReader();
             } catch (IOException e) {

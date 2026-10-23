@@ -931,6 +931,10 @@ Command codes (identical to the original):
 | `initReplicaRecovery(RecoveringBlock)` | stop the writer, replica → RUR, returns length/GS/original state (`null` = no replica) |
 | `updateReplicaUnderRecovery(oldBlock, recoveryId, newLength)` | truncate, GS = recoveryId, finalize, IBR to NN |
 
+`ClientDatanodeProtocol` (client → DataNode, RMI on the same ipcPort) has a single method,
+`getReplicaVisibleLength(block)`: the current length of the replica. The client uses it to read the last block
+of a file that is still open (see 8.2).
+
 ### 7.4 DataTransferProtocol (TCP)
 
 All numbers big-endian (`DataOutputStream`), strings as `writeUTF`.
@@ -1189,7 +1193,9 @@ sequenceDiagram
 
 * The DataNode extends the range to **512-byte chunk boundaries**; the client discards the surplus bytes at the front.
 * On a connection or checksum error, the node is marked as "dead" for this block and the next one is tried.
-* Open files: only the blocks that are already completed are readable (simplification).
+* Open files: the NameNode reports the length of the completed blocks only. For the block being written, the
+  client asks a DataNode of the pipeline for the visible length (`ClientDatanodeProtocol.getReplicaVisibleLength`,
+  RMI on the ipcPort) and can then read everything that has reached the DataNodes, e.g. after `hflush`.
 * `seek(pos)` drops the connection; the next `read` connects anew at the block that contains `pos`.
   `read(position, buf, off, len)` (pread) reads at `position` without changing the stream position –
   an HFile reader uses this to jump straight to a block (see [EDUBASE.md](EDUBASE.md)).
@@ -1936,7 +1942,7 @@ The right-hand column is written out in full so that you can find the class dire
 | Safe mode | no | yes – NN waits for block reports after startup |
 | Writing | an error in the pipeline aborts the stream | pipeline recovery (`updatePipeline`, new GS) |
 | API | create/write/hflush/close, seek and pread, append only with a new block | append into the last block, truncate, real hsync (fsync), concat |
-| Reading open files | only completed blocks | client asks the DataNode for the "visible length" |
+| Reading open files | client asks a DataNode for the length of the last block (its RBW length) | same, but the DataNode answers with the bytes acknowledged by the whole pipeline |
 | Placement | random DataNodes, per DataNode the DISK storage with the most free space | `BlockPlacementPolicyDefault`: rack-aware (1st replica local, 2nd/3rd on another rack), load, free space, storage policy |
 | Locking | one global lock | also global, but finer-grained (e.g. block lock splits in newer versions) |
 | Block reports | per storage, as an object array | per storage, `BlockListAsLongs` (compact), split across multiple RPCs for many blocks |

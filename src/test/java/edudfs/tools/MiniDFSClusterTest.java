@@ -567,4 +567,14 @@ class MiniDFSClusterTest {
         waitFor("lease recovered", 20000, () -> client.recoverLease("/wal"));
         assertArrayEquals(d, read("/wal"));
     }
+
+    @Test
+    void readerSeesHflushedBytesOfAnOpenFile() throws Exception {
+        DFSOutputStream out = client.create("/open", false, REPL, BS);
+        byte[] d = data(BS + 700);  // one completed block + 700 bytes in the block being written
+        out.write(d);
+        out.hflush();
+        assertArrayEquals(d, read("/open"));  // visible length of the last block comes from the DataNodes
+        out.close();
+    }
 }
