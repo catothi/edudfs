@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Launcher for EduBase (modeled on bin/hbase). EduDFS must be running first: ./hdfs minicluster
+#   ./hbase minicluster [n]              HMaster + n RegionServers in one JVM (default 2)
+#   ./hbase master                       HMaster as a separate process
+#   ./hbase regionserver <i>             RegionServer i (port 16020+i) as a separate process
+#   ./hbase shell [-n | -e cmd | script] shell (interactive, -n: commands from stdin, -e: one command, or a script)
+#   ./hbase hfile [options] -f <path>    look inside an HFile (./hbase hfile prints the options)
+#   ./hbase wal [options] <path>         look inside a WAL / recovered.edits file or directory
+#   ./hbase metasave                     state of master and all RegionServers
+#   ./hbase demo                         guided tour (starts its own EduDFS + EduBase)
+set -e
+cd "$(dirname "$0")"
+OUT=out
+
+[ -d "$OUT" ] || ./hdfs build
+
+cmd="$1"; shift || true
+case "$cmd" in
+  minicluster)  exec java $JAVA_OPTS -cp "$OUT" edubase.tools.MiniHBaseCluster "$@" ;;
+  master)       exec java $JAVA_OPTS -cp "$OUT" edubase.master.HMaster "$@" ;;
+  regionserver) exec java $JAVA_OPTS -cp "$OUT" edubase.regionserver.HRegionServer "$@" ;;
+  shell)        exec java $JAVA_OPTS -cp "$OUT" edubase.tools.HBaseShell "$@" ;;
+  hfile)        exec java $JAVA_OPTS -cp "$OUT" edubase.io.hfile.HFilePrettyPrinter "$@" ;;
+  wal)          exec java $JAVA_OPTS -cp "$OUT" edubase.wal.WALPrettyPrinter "$@" ;;
+  metasave)     exec java $JAVA_OPTS -cp "$OUT" edubase.tools.HBaseShell -e metasave ;;
+  demo)         exec java $JAVA_OPTS -cp "$OUT" edubase.tools.Demo "$@" ;;
+  *)            sed -n '2,10p' "$0"; exit 1 ;;
+esac

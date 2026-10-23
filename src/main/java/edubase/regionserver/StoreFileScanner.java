@@ -87,6 +87,7 @@ public class StoreFileScanner implements KeyValueScanner {
 
     @Override
     public boolean seek(Cell key) throws IOException {
+        trace("HFile " + file.getShortName() + ": seek");
         cur = hfs.seekTo(key) ? hfs.getCell() : null;
         checkFalsePositive(key);
         return cur != null;

@@ -53,7 +53,8 @@ public class HFileBlock {
 
     static byte[] header(BlockType type, int onDiskSizeWithoutHeader, long prevBlockOffset, long checksum) {
         return String.format("%s onDiskSizeWithoutHeader=%10d prevBlockOffset=%10d checksum=%08x\n",
-                type.getMagic(), onDiskSizeWithoutHeader, prevBlockOffset, checksum).getBytes(StandardCharsets.US_ASCII);
+                type.getMagic(), onDiskSizeWithoutHeader, prevBlockOffset, checksum)
+                .getBytes(StandardCharsets.US_ASCII);
     }
 
     /** Header + body as written to the file. The body must be ASCII and end with '\n'. */
@@ -86,7 +87,8 @@ public class HFileBlock {
             prev = Long.parseLong(field(header, "prevBlockOffset="));
             expectedCrc = Long.parseLong(field(header, "checksum="), 16);
         } catch (RuntimeException e) {
-            throw new IOException("Corrupt block header at offset " + offset + " of " + fileName + ": " + header.trim());
+            throw new IOException("Corrupt block header at offset " + offset + " of " + fileName + ": "
+                    + header.trim());
         }
         byte[] b = new byte[size];
         in.readFully(offset + HEADER_SIZE, b, 0, size);

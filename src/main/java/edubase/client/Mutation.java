@@ -1,7 +1,6 @@
 package edubase.client;
 
 import edubase.Cell;
-import edubase.HConstants;
 import edubase.KeyValue;
 import edubase.util.Bytes;
 
@@ -57,10 +56,6 @@ public abstract class Mutation implements Serializable {
 
     public boolean isEmpty() {
         return cells.isEmpty();
-    }
-
-    protected static long orLatest(long ts) {
-        return ts == HConstants.LATEST_TIMESTAMP ? HConstants.LATEST_TIMESTAMP : ts;
     }
 
     @Override

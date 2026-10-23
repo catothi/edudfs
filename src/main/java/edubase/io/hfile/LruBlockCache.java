@@ -2,6 +2,7 @@ package edubase.io.hfile;
 
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -102,6 +103,7 @@ public class LruBlockCache {
         long requests = getHitCount() + getMissCount();
         return String.format("blocks=%d, size=%d of %d bytes, hits=%d, misses=%d, hitRatio=%s, evicted=%d",
                 getBlockCount(), getCurrentSize(), maxSize, getHitCount(), getMissCount(),
-                requests == 0 ? "-" : String.format("%.0f%%", 100.0 * getHitCount() / requests), getEvictedCount());
+                requests == 0 ? "-" : String.format(Locale.ROOT, "%.0f%%", 100.0 * getHitCount() / requests),
+                getEvictedCount());
     }
 }

@@ -112,7 +112,9 @@ public class HRegion {
         long replayedMax = replayRecoveredEditsIfAny(maxSeqIdInStores);
         mvcc.advanceTo(Math.max(maxSeqId, replayedMax));
         openSeqNum = mvcc.getWritePoint() + 1;
-        lastFlushSeqId = maxSeqId;
+        for (HStore s : stores.values()) {
+            lastFlushSeqId = Math.max(lastFlushSeqId, s.getMaxSequenceId());  // includes the flush after a replay
+        }
         lastFlushTime = EnvironmentEdgeManager.currentTime();
         Log.info(LOG, "Opened " + regionInfo.getRegionNameAsString() + "; next sequenceid=" + openSeqNum
                 + (replayedEdits > 0 ? ", replayed " + replayedEdits + " edits from recovered.edits" : ""));
@@ -324,7 +326,8 @@ public class HRegion {
                 for (HStore s : stores.values()) {
                     if (s.needsCompaction()) {
                         rsServices.requestCompaction(this, s, "after flush: " + s.getStorefiles().size()
-                                + " HFiles >= hbase.hstore.compactionThreshold=" + HBaseConfiguration.COMPACTION_MIN_FILES);
+                                + " HFiles >= hbase.hstore.compactionThreshold="
+                                + HBaseConfiguration.COMPACTION_MIN_FILES);
                     }
                 }
             }

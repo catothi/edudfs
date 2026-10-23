@@ -42,28 +42,36 @@ public final class RatioBasedCompactionPolicy {
         if (forceMajor) {
             return new CompactionRequest(new ArrayList<>(candidates), true, true, why);
         }
-        int minFiles = HBaseConfiguration.COMPACTION_MIN_FILES;
-        int maxFiles = HBaseConfiguration.COMPACTION_MAX_FILES;
-        double ratio = HBaseConfiguration.COMPACTION_RATIO;
-        long minSize = HBaseConfiguration.COMPACTION_MIN_SIZE;
-        int n = candidates.size();
+        long[] size = new long[candidates.size()];
+        for (int i = 0; i < size.length; i++) {
+            size[i] = candidates.get(i).length();
+        }
+        int[] window = applyCompactionPolicy(size, HBaseConfiguration.COMPACTION_MIN_FILES,
+                HBaseConfiguration.COMPACTION_MAX_FILES, HBaseConfiguration.COMPACTION_RATIO,
+                HBaseConfiguration.COMPACTION_MIN_SIZE);
+        if (window == null) {
+            return null;
+        }
+        List<HStoreFile> selected = new ArrayList<>(candidates.subList(window[0], window[1]));
+        return new CompactionRequest(selected, false, selected.size() == candidates.size(), why);
+    }
+
+    /**
+     * The ratio rule on the file sizes (oldest first).
+     * @return [start, end) of the selected files, or null
+     */
+    static int[] applyCompactionPolicy(long[] size, int minFiles, int maxFiles, double ratio, long minSize) {
+        int n = size.length;
         if (n < minFiles) {
             return null;
         }
-        long[] size = new long[n];
-        for (int i = 0; i < n; i++) {
-            size[i] = candidates.get(i).length();
-        }
         int start = 0;
-        while (n - start >= minFiles && size[start] > Math.max(minSize, (long) (sumNewer(size, start + 1, maxFiles) * ratio))) {
+        while (n - start >= minFiles
+                && size[start] > Math.max(minSize, (long) (sumNewer(size, start + 1, maxFiles) * ratio))) {
             start++;
         }
         int end = Math.min(n, start + maxFiles);
-        if (end - start < minFiles) {
-            return null;
-        }
-        List<HStoreFile> selected = new ArrayList<>(candidates.subList(start, end));
-        return new CompactionRequest(selected, false, selected.size() == n, why);
+        return end - start < minFiles ? null : new int[]{start, end};
     }
 
     /** Sum of the sizes of the (at most maxFiles - 1) files starting at from. */

@@ -120,6 +120,11 @@ public class HFileReaderImpl implements HFile.Reader {
         return Collections.unmodifiableMap(bloomMeta);
     }
 
+    /** The file itself (for HFilePrettyPrinter, which walks over all blocks). */
+    PositionedReadable getInput() {
+        return in;
+    }
+
     public List<HFileBlock> getLoadOnOpenBlocks() {
         return loadOnOpenBlocks;
     }

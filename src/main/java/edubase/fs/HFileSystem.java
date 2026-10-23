@@ -4,6 +4,7 @@ import edubase.io.PositionedReadable;
 import edudfs.client.DFSClient;
 import edudfs.client.DFSInputStream;
 import edudfs.client.DFSOutputStream;
+import edudfs.common.HdfsConfig;
 import edudfs.common.Log;
 import edudfs.protocol.HdfsFileStatus;
 
@@ -39,7 +40,7 @@ public class HFileSystem implements Closeable {
     }
 
     public DFSOutputStream create(String path, boolean overwrite, long blockSize) throws IOException {
-        return dfs.create(path, overwrite, edudfs.common.HdfsConfig.DEFAULT_REPLICATION, blockSize);
+        return dfs.create(path, overwrite, HdfsConfig.DEFAULT_REPLICATION, blockSize);
     }
 
     /** For HFiles: random access via pread. */

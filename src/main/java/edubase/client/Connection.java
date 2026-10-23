@@ -72,7 +72,8 @@ public class Connection implements Closeable {
         ClientService s = clientStubs.get(sn);
         if (s == null) {
             try {
-                s = (ClientService) LocateRegistry.getRegistry(sn.getHostname(), sn.getPort()).lookup(ClientService.NAME);
+                s = (ClientService) LocateRegistry.getRegistry(sn.getHostname(), sn.getPort())
+                        .lookup(ClientService.NAME);
             } catch (NotBoundException e) {
                 throw new IOException(e);
             }

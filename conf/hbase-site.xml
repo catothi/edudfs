@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<!--
+  hbase-site.xml - ONE file for the HMaster, all RegionServers and the client (as in the original).
+  EduBase reads it from the same directory as core-site.xml and hdfs-site.xml.
+
+  Sizes and times are much smaller than in the original, so that flushes, compactions, WAL rolls
+  and RegionServer failures can be watched with a handful of rows and within seconds.
+  Values can be overridden with -Dname=value (JAVA_OPTS="-Dname=value" ./hbase ...).
+  All keys and their original defaults: docs/EDUBASE.md, section "Configuration".
+-->
+<configuration>
+
+  <!-- ============================================================ storage -->
+  <property>
+    <name>hbase.rootdir</name>
+    <value>hdfs://localhost:9000/hbase</value>
+    <description>Where HBase keeps everything in HDFS: tables (data/), WALs (WALs/, oldWALs/), archive/.</description>
+  </property>
+
+  <!-- =========================================================== MemStore -->
+  <property>
+    <name>hbase.hregion.memstore.flush.size</name>
+    <value>64k</value>
+    <description>A region flushes its MemStores into HFiles once they hold this much data (original: 128 MB).</description>
+  </property>
+
+  <!-- ========================================================= compaction -->
+  <property>
+    <name>hbase.hstore.compactionThreshold</name>
+    <value>3</value>
+    <description>From this many HFiles in a store a minor compaction starts after a flush (original: 3).</description>
+  </property>
+
+  <property>
+    <name>hbase.hstore.compaction.max</name>
+    <value>10</value>
+    <description>At most this many files per minor compaction (original: 10).</description>
+  </property>
+
+  <property>
+    <name>hbase.hstore.compaction.ratio</name>
+    <value>1.2</value>
+    <description>A file is only selected if it is not larger than ratio x the sum of the newer files (original: 1.2).</description>
+  </property>
+
+  <!-- ================================================================ WAL -->
+  <property>
+    <name>hbase.regionserver.hlog.blocksize</name>
+    <value>64k</value>
+    <description>HDFS block size of WAL files. The WAL is rolled at blocksize x hbase.regionserver.logroll.multiplier (0.5).</description>
+  </property>
+
+  <!-- ========================================================= read path -->
+  <property>
+    <name>io.storefile.bloom.error.rate</name>
+    <value>0.01</value>
+    <description>Target false positive rate of the Bloom filters (original: 0.01).</description>
+  </property>
+
+  <!-- ================================================ master/RegionServers -->
+  <property>
+    <name>hbase.regionserver.msginterval</name>
+    <value>1000</value>
+    <description>Heartbeat RegionServer -> master in ms (original: 3000).</description>
+  </property>
+
+  <property>
+    <name>zookeeper.session.timeout</name>
+    <value>6000</value>
+    <description>
+      A RegionServer without a heartbeat for this long (ms) is declared dead and its regions are
+      recovered (original: 90000; there ZooKeeper detects it - EduBase has no ZooKeeper).
+    </description>
+  </property>
+
+  <!--
+    Not configurable, because EduBase simplifies it:
+      hbase.zookeeper.quorum          there is no ZooKeeper
+      hbase.cluster.distributed       always "distributed" over RMI on localhost
+      hbase.hregion.max.filesize      regions are never split automatically (pre-split with SPLITS => [...])
+  -->
+
+</configuration>

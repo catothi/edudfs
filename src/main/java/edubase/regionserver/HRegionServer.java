@@ -355,7 +355,8 @@ public class HRegionServer {
                     sb.append("          ").append(KeyValueCodec.encode(c)).append('\n');
                 }
                 List<HStoreFile> files = s.getStorefiles();
-                sb.append(String.format("        HFiles (%d):%s%n", files.size(), files.isEmpty() ? " -" : ""));
+                sb.append(String.format("        HFiles (%d)%s%n", files.size(), files.isEmpty() ? ": -"
+                        : " in " + s.getRegionFileSystem().getStoreDir(s.getColumnFamilyName()) + "/:"));
                 if (!files.isEmpty()) {
                     sb.append(String.format("          %-34s %7s %6s %6s %6s %-6s %-22s %s%n", "name", "bytes", "cells",
                             "blocks", "seqid", "bloom", "bloom req/neg/fp", "created by"));

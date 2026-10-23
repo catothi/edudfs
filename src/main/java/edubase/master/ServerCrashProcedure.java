@@ -15,6 +15,7 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 
 /**
  * Corresponds to org.apache.hadoop.hbase.master.procedure.ServerCrashProcedure: what the master does
@@ -82,7 +83,7 @@ public class ServerCrashProcedure implements Runnable {
      * Corresponds to SplitWALManager / MasterWalManager.splitLog: splits all WALs of a dead server.
      * Also used at master startup for WAL directories of servers that are no longer alive.
      */
-    static void splitLogs(HFileSystem fs, ServerName sn, java.util.function.Consumer<String> log) throws IOException {
+    static void splitLogs(HFileSystem fs, ServerName sn, Consumer<String> log) throws IOException {
         String dir = CommonFSUtils.getWALDirectoryName(sn);
         String splitting = dir + HConstants.SPLITTING_EXT;
         if (fs.exists(dir)) {
@@ -95,7 +96,8 @@ public class ServerCrashProcedure implements Runnable {
         for (HdfsFileStatus st : files) {
             String wal = st.getPath();
             if (st.isUnderConstruction()) {
-                log.accept("  recoverLease " + CommonFSUtils.getName(wal) + " (still open: the dead server never closed it)");
+                log.accept("  recoverLease " + CommonFSUtils.getName(wal)
+                        + " (still open: the dead server never closed it)");
             }
             fs.recoverFileLease(wal, 60_000);
             WALSplitter.SplitResult r = WALSplitter.splitLogFile(fs, wal);

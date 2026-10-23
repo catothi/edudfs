@@ -7,13 +7,15 @@ import edubase.KeyValue;
  * Corresponds to org.apache.hadoop.hbase.client.Delete.
  *
  * A delete removes nothing right away - it writes a delete marker ("tombstone"). Readers hide
- * everything the marker covers; only a major compaction removes the marker and the covered cells
- * physically. Marker types:
+ * everything the marker covers; only a compaction over ALL HFiles of the store (major compaction, or a
+ * minor one that happened to select all files) removes the marker and the covered cells physically.
+ * Marker types:
  * <table>
  *   <caption>delete markers</caption>
  *   <tr><td>addColumn(f, q)</td><td>Delete</td><td>exactly one version (the newest, or the one with ts)</td></tr>
  *   <tr><td>addColumns(f, q)</td><td>DeleteColumn</td><td>all versions of the column with timestamp &lt;= ts</td></tr>
- *   <tr><td>addFamily(f)</td><td>DeleteFamily</td><td>all columns of the family in this row with timestamp &lt;= ts</td></tr>
+ *   <tr><td>addFamily(f)</td><td>DeleteFamily</td>
+ *       <td>all columns of the family in this row with timestamp &lt;= ts</td></tr>
  *   <tr><td>new Delete(row) alone</td><td>DeleteFamily</td><td>for every family of the table (whole row)</td></tr>
  * </table>
  */

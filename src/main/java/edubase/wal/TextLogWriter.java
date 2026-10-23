@@ -6,6 +6,7 @@ import edudfs.client.DFSOutputStream;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -29,11 +30,12 @@ public class TextLogWriter implements Closeable {
     public static final String ENTRY = "ENTRY ";
     public static final String TRAILER = "LAWP trailer";
 
-    private final DFSOutputStream out;
+    private final OutputStream out;
     private long length;
     private boolean closed;
 
-    public TextLogWriter(DFSOutputStream out) throws IOException {
+    /** out: a DFSOutputStream in HBase; any stream in tests (then sync = flush). */
+    public TextLogWriter(OutputStream out) throws IOException {
         this.out = out;
         write(HEADER + "\n");
     }
@@ -58,7 +60,11 @@ public class TextLogWriter implements Closeable {
 
     /** hflush: the bytes are on all DataNodes of the pipeline. */
     public void sync() throws IOException {
-        out.hflush();
+        if (out instanceof DFSOutputStream dfs) {
+            dfs.hflush();
+        } else {
+            out.flush();
+        }
     }
 
     public long getLength() {

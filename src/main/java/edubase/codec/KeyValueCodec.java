@@ -36,7 +36,8 @@ public final class KeyValueCodec {
     /** row/family:qualifier/timestamp/type - the key of a cell (also used in the block index). */
     public static String encodeKey(Cell c) {
         return Bytes.toStringBinary(c.getRow(), KEY_ESCAPES) + "/" + Bytes.toStringBinary(c.getFamily(), KEY_ESCAPES)
-                + ":" + Bytes.toStringBinary(c.getQualifier(), KEY_ESCAPES) + "/" + c.getTimestamp() + "/" + c.getType();
+                + ":" + Bytes.toStringBinary(c.getQualifier(), KEY_ESCAPES) + "/" + c.getTimestamp() + "/"
+                + c.getType();
     }
 
     public static String encode(Cell c) {

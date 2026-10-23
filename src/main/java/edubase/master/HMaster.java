@@ -35,8 +35,10 @@ import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -218,7 +220,7 @@ public class HMaster {
         List<RegionInfo> regions = new ArrayList<>();
         byte[] start = HConstants.EMPTY_START_ROW;
         byte[][] keys = splitKeys == null ? new byte[0][] : splitKeys.clone();
-        java.util.Arrays.sort(keys, Bytes::compareTo);
+        Arrays.sort(keys, Bytes::compareTo);
         for (byte[] k : keys) {
             regions.add(new RegionInfo(name, start, k, regionId));
             start = k;
@@ -331,7 +333,8 @@ public class HMaster {
                 byte[] rrow = Bytes.toBytes(rs.getRegion().getRegionNameAsString());
                 long ts = rs.getStamp();
                 List<Cell> cells = new ArrayList<>();
-                cells.add(new KeyValue(rrow, info, Bytes.toBytes("regioninfo"), ts, Bytes.toBytes(rs.getRegion().toString())));
+                cells.add(new KeyValue(rrow, info, Bytes.toBytes("regioninfo"), ts,
+                        Bytes.toBytes(rs.getRegion().toString())));
                 if (rs.getServerName() != null) {
                     cells.add(new KeyValue(rrow, info, Bytes.toBytes("seqnumDuringOpen"), ts,
                             Bytes.toBytes(String.valueOf(rs.getOpenSeqNum()))));
@@ -361,8 +364,9 @@ public class HMaster {
                 mem += l.memStoreSize();
                 files += l.storefiles();
             }
-            sb.append(String.format("  %-36s last report %.1f s ago, %d region(s), MemStore %d bytes, %d HFile(s)%n",
-                    sn, (now - serverManager.getLastReport(sn)) / 1000.0, serverManager.getLoad(sn).size(), mem, files));
+            sb.append(String.format(Locale.ROOT, "  %-36s last report %.1f s ago, %d region(s), MemStore %d bytes,"
+                            + " %d HFile(s)%n", sn, (now - serverManager.getLastReport(sn)) / 1000.0,
+                    serverManager.getLoad(sn).size(), mem, files));
         }
         if (!serverManager.getDeadServers().isEmpty()) {
             sb.append("Dead RegionServers: ").append(serverManager.getDeadServers()).append('\n');
@@ -370,14 +374,16 @@ public class HMaster {
         sb.append("hbase:meta (in master memory):\n");
         for (TableDescriptor htd : assignmentManager.getTableDescriptors()) {
             TableName t = htd.getTableName();
-            sb.append("  table ").append(t).append("  ").append(assignmentManager.isTableEnabled(t) ? "ENABLED" : "DISABLED");
+            sb.append("  table ").append(t).append("  ")
+                    .append(assignmentManager.isTableEnabled(t) ? "ENABLED" : "DISABLED");
             for (ColumnFamilyDescriptor f : htd.getColumnFamilies()) {
                 sb.append("  ").append(f);
             }
             sb.append('\n');
             for (RegionState rs : assignmentManager.getTableRegionStates(t)) {
                 sb.append(String.format("    %s  ['%s', '%s')  %-17s %s%n", rs.getRegion().getEncodedName(),
-                        Bytes.toStringBinary(rs.getRegion().getStartKey()), Bytes.toStringBinary(rs.getRegion().getEndKey()),
+                        Bytes.toStringBinary(rs.getRegion().getStartKey()),
+                        Bytes.toStringBinary(rs.getRegion().getEndKey()),
                         rs.getState(), rs.getServerName() == null ? "" : "on " + rs.getServerName()));
             }
         }
@@ -410,14 +416,16 @@ public class HMaster {
         for (ServerName sn : online) {
             regions += serverManager.getLoad(sn).size();
         }
-        StringBuilder sb = new StringBuilder(String.format("1 active master, 0 backup masters, %d servers, %d dead, %.4f average load%n",
-                online.size(), serverManager.getDeadServers().size(), online.isEmpty() ? 0.0 : (double) regions / online.size()));
+        StringBuilder sb = new StringBuilder(String.format(Locale.ROOT,
+                "1 active master, 0 backup masters, %d servers, %d dead, %.4f average load%n", online.size(),
+                serverManager.getDeadServers().size(), online.isEmpty() ? 0.0 : (double) regions / online.size()));
         if (detailed) {
             for (ServerName sn : online) {
                 sb.append("    ").append(sn).append('\n');
                 for (RegionLoad l : serverManager.getLoad(sn)) {
                     sb.append(String.format("        %s: memstoreSize=%d, storefiles=%d, storefileSize=%d, "
-                                    + "readRequestsCount=%d, writeRequestsCount=%d%n", l.encodedName(), l.memStoreSize(),
+                                    + "readRequestsCount=%d, writeRequestsCount=%d%n", l.encodedName(),
+                            l.memStoreSize(),
                             l.storefiles(), l.storefileSize(), l.readRequests(), l.writeRequests()));
                 }
             }

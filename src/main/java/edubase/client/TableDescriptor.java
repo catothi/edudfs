@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -66,7 +67,7 @@ public final class TableDescriptor implements Serializable {
 
     public static TableDescriptor parseFrom(String content) {
         TableName name = null;
-        java.util.List<ColumnFamilyDescriptor> fams = new ArrayList<>();
+        List<ColumnFamilyDescriptor> fams = new ArrayList<>();
         for (String line : content.split("\n")) {
             if (line.startsWith("tableName=")) {
                 name = TableName.valueOf(line.substring("tableName=".length()));

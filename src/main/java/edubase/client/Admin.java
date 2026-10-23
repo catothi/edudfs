@@ -1,6 +1,7 @@
 package edubase.client;
 
 import edubase.HRegionLocation;
+import edubase.ServerName;
 import edubase.TableName;
 import edubase.ipc.AdminService;
 import edubase.regionserver.compactions.CompactionRecord;
@@ -110,7 +111,8 @@ public class Admin implements Closeable {
         List<CompactionRecord> r = new ArrayList<>();
         for (HRegionLocation loc : getRegions(table)) {
             if (loc.getServerName() != null) {
-                r.addAll(connection.getAdmin(loc.getServerName()).compactRegion(loc.getRegion().getEncodedName(), major));
+                AdminService rs = connection.getAdmin(loc.getServerName());
+                r.addAll(rs.compactRegion(loc.getRegion().getEncodedName(), major));
             }
         }
         return r;
@@ -118,7 +120,7 @@ public class Admin implements Closeable {
 
     /** EduBase: the last compactions of all RegionServers that serve regions of tables. */
     public List<CompactionRecord> getCompactionHistory() throws IOException {
-        Set<edubase.ServerName> servers = new LinkedHashSet<>();
+        Set<ServerName> servers = new LinkedHashSet<>();
         for (TableDescriptor d : listTableDescriptors()) {
             if (isTableEnabled(d.getTableName())) {
                 for (HRegionLocation loc : getRegions(d.getTableName())) {
@@ -129,7 +131,7 @@ public class Admin implements Closeable {
             }
         }
         List<CompactionRecord> r = new ArrayList<>();
-        for (edubase.ServerName sn : servers) {
+        for (ServerName sn : servers) {
             AdminService a = connection.getAdmin(sn);
             r.addAll(a.getCompactionHistory());
         }

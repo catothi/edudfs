@@ -18,7 +18,8 @@ import java.util.Map;
  *
  * Names (as in the original):
  * <pre>
- *   region name:   &lt;table&gt;,&lt;startKey&gt;,&lt;regionId&gt;.&lt;encodedName&gt;.     e.g. t,g,1761213640000.3f2a…9c.
+ *   region name:   &lt;table&gt;,&lt;startKey&gt;,&lt;regionId&gt;.&lt;encodedName&gt;.
+ *                  e.g. t,g,1761213640000.3f2a…9c.
  *   encoded name:  MD5 hex of "&lt;table&gt;,&lt;startKey&gt;,&lt;regionId&gt;"       = directory name in HDFS
  * </pre>
  * The regionId is the creation time in ms.

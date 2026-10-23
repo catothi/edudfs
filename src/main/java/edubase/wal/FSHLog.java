@@ -112,7 +112,8 @@ public class FSHLog implements WAL {
         currentRegionSeqIds = new HashMap<>();
         currentEntries = 0;
         if (oldPath != null) {
-            Log.info(LOG, "Rolled WAL " + CommonFSUtils.getName(oldPath) + " -> new WAL " + CommonFSUtils.getName(currentPath));
+            Log.info(LOG, "Rolled WAL " + CommonFSUtils.getName(oldPath) + " -> new WAL "
+                    + CommonFSUtils.getName(currentPath));
         } else {
             Log.info(LOG, "New WAL " + currentPath);
         }
@@ -193,7 +194,8 @@ public class FSHLog implements WAL {
             for (Map.Entry<String, Long> reg : e.getValue().entrySet()) {
                 long flushed = flushedSeqIds.getOrDefault(reg.getKey(), -1L);
                 if (flushed < reg.getValue()) {
-                    why.append(why.length() > 0 ? ", " : "").append(reg.getKey(), 0, 8).append(" has edits up to seqid ")
+                    why.append(why.length() > 0 ? ", " : "").append(reg.getKey(), 0, 8)
+                            .append(" has edits up to seqid ")
                             .append(reg.getValue()).append(", flushed only up to ").append(flushed);
                 }
             }
