@@ -142,8 +142,8 @@ class MiniHBaseClusterTest {
         t.delete(new Delete(Bytes.toBytes("mango")));
         assertTrue(t.get(new Get(Bytes.toBytes("mango"))).isEmpty());
         List<String> range = new ArrayList<>();
-        Scan range = new Scan().withStartRow(Bytes.toBytes("h")).withStopRow(Bytes.toBytes("p"));
-        try (ResultScanner s = t.getScanner(range)) {
+        Scan hToP = new Scan().withStartRow(Bytes.toBytes("h")).withStopRow(Bytes.toBytes("p"));
+        try (ResultScanner s = t.getScanner(hToP)) {
             for (Result r : s) {
                 range.add(Bytes.toString(r.getRow()));
             }

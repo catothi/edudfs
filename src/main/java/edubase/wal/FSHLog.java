@@ -195,8 +195,8 @@ public class FSHLog implements WAL {
                 long flushed = flushedSeqIds.getOrDefault(reg.getKey(), -1L);
                 if (flushed < reg.getValue()) {
                     why.append(why.length() > 0 ? ", " : "").append(reg.getKey(), 0, 8)
-                            .append(" has edits up to seqid ")
-                            .append(reg.getValue()).append(", flushed only up to ").append(flushed);
+                            .append(" has edits up to seqid ").append(reg.getValue())
+                            .append(flushed < 0 ? ", not flushed yet" : ", flushed only up to " + flushed);
                 }
             }
             r.add(CommonFSUtils.getName(e.getKey()) + "  waiting for flush: " + why);
