@@ -40,6 +40,9 @@ import java.util.List;
  * are sent AGAIN with the next packet (as in the original), because a CRC always covers a whole chunk.
  * The DataNodes then overwrite the partial chunk (BlockReceiver).
  *
+ * If no data comes for half of dfs.client.socket-timeout, the DataStreamer sends a heartbeat packet
+ * so that the DataNodes do not drop the idle pipeline (important for the long-lived WAL of HBase).
+ *
  * Simplifications: no pipeline recovery on DataNode failure during the write
  * (the stream fails); hsync = hflush (no fsync on the DataNodes); append always starts a new block
  * (like CreateFlag.NEW_BLOCK in the original), a last block that is not full is not continued.
@@ -294,16 +297,29 @@ public class DFSOutputStream extends OutputStream {
         @Override
         public void run() {
             try {
+                long lastPacketTime = System.currentTimeMillis();
                 while (true) {
                     Packet one;
+                    boolean heartbeat = false;
                     synchronized (dataQueue) {
                         while (!streamerClosed && lastException == null && dataQueue.isEmpty() && !closing) {
-                            dataQueue.wait(1000);
+                            if (blockStream != null
+                                    && System.currentTimeMillis() - lastPacketTime >= HdfsConfig.SOCKET_TIMEOUT_MS / 2) {
+                                heartbeat = true;
+                                break;
+                            }
+                            dataQueue.wait(Math.min(1000, HdfsConfig.SOCKET_TIMEOUT_MS / 4));
                         }
-                        if (streamerClosed || lastException != null || dataQueue.isEmpty()) {
+                        if (streamerClosed || lastException != null || (!heartbeat && dataQueue.isEmpty())) {
                             return;
                         }
-                        one = dataQueue.getFirst();
+                        one = heartbeat ? null : dataQueue.getFirst();
+                    }
+                    lastPacketTime = System.currentTimeMillis();
+                    if (heartbeat) {
+                        Packet.heartbeat().write(blockStream);  // not in the ackQueue: its ack is ignored
+                        blockStream.flush();
+                        continue;
                     }
                     if (blockStream == null) {
                         nextBlockOutputStream();
@@ -448,6 +464,9 @@ public class DFSOutputStream extends OutputStream {
                             if (ack.replies[i] != DataTransferProtocol.SUCCESS) {
                                 throw new IOException("Bad response " + ack.replies[i] + " from " + targets[i]);
                             }
+                        }
+                        if (ack.seqno == Packet.HEART_BEAT_SEQNO) {
+                            continue;
                         }
                         Packet one;
                         synchronized (dataQueue) {

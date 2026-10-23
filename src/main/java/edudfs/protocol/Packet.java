@@ -15,6 +15,8 @@ import java.io.IOException;
  * int numChecksums   | int[numChecksums] CRC32 (per 512 bytes) | byte[dataLen] data
  * </pre>
  * A block is always terminated by an empty packet with lastPacketInBlock=true.
+ * A heartbeat packet (seqno = -1, no data) keeps an idle pipeline alive: the DataNodes forward and
+ * acknowledge it, but write nothing.
  */
 public class Packet {
 
@@ -33,6 +35,17 @@ public class Packet {
         this.data = data;
         this.dataLen = dataLen;
         this.checksums = checksums;
+    }
+
+    /** PacketHeader.HEART_BEAT_SEQNO in the original. */
+    public static final long HEART_BEAT_SEQNO = -1;
+
+    public static Packet heartbeat() {
+        return new Packet(0, HEART_BEAT_SEQNO, false, new byte[0], 0, new int[0]);
+    }
+
+    public boolean isHeartbeatPacket() {
+        return seqno == HEART_BEAT_SEQNO;
     }
 
     public static Packet lastPacket(long offsetInBlock, long seqno) {

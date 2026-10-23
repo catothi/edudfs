@@ -206,6 +206,11 @@ public final class HdfsConfig {
     public static final int BLOCK_INVALIDATE_LIMIT = 1000;
 
     // -------------------------------------------------------------- Network
+    /**
+     * dfs.client.socket-timeout: read timeout on the data transfer connections (original: 60 s).
+     * An idle write pipeline sends heartbeat packets every half of it.
+     */
+    public static final long SOCKET_TIMEOUT_MS = getTimeMs("dfs.client.socket-timeout", 1, "edudfs.socket.timeout.ms", 60000);
     /** fs.defaultFS from core-site.xml (original port: 8020 or 9000). */
     private static final URI DEFAULT_FS = URI.create(get("fs.defaultFS") == null ? "hdfs://localhost:9000"
             : get("fs.defaultFS"));

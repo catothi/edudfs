@@ -1166,7 +1166,7 @@ blk_1073741827_1003   6             0    45056    false    (on close(), 88 check
 | Packet header | fixed fields, `DataOutputStream` | `PLEN` + `HLEN` + `PacketHeaderProto` (Protobuf) |
 | Packet size | 64 KB of **payload** | 64 KB **including** checksums → 126 chunks = 64512 bytes of data |
 | Last packet | sent immediately | only once all previous packets are acknowledged (`PIPELINE_CLOSE`) |
-| Heartbeat packets | none | empty packets with `seqno = -1`, so that an idle pipeline does not time out |
+| Heartbeat packets | empty packet with `seqno = -1` after half of `dfs.client.socket-timeout` without data; forwarded and acknowledged, not written | same |
 | Ack content | status per DataNode | additionally flags (e.g. ECN/overload) and `downstreamAckTimeNanos` |
 | CRC error | connection abort | ack with `ERROR_CHECKSUM` |
 | DataNode fails | stream fails | pipeline recovery: remove node, get new GS (`updatePipeline`), keep writing |
@@ -1747,6 +1747,7 @@ JAVA_OPTS="-Ddfs.datanode.failed.volumes.tolerated=0 -Dedudfs.quiet=true" ./hdfs
 | `dfs.blocksize` | hdfs-site | `1m` (demo: 128 KB) | 1 MB | 128 MB | default block size (multiple of 512) |
 | `dfs.heartbeat.interval` | hdfs-site | `1s` | 1 s | 3 s | heartbeat interval (without suffix: seconds) |
 | `dfs.blockreport.intervalMsec` | hdfs-site | 30000 | 30000 | 6 h | full block report |
+| `dfs.client.socket-timeout` | hdfs-site | – | 60000 | 60 s | read timeout of the data transfer connections; an idle write pipeline sends a heartbeat packet every half of it |
 
 Deliberately **not** configurable (noted as a comment in `hdfs-site.xml`): `dfs.namenode.name.dir` (no
 persistence), `dfs.datanode.address` / `dfs.datanode.ipc.address` (ports differ per DataNode, `50010+i` /
@@ -1764,6 +1765,7 @@ XML values:
 | `edudfs.lease.softlimit.ms` | 5000 | 60 s | soft limit; the client renews every half of it |
 | `edudfs.lease.hardlimit.ms` | 15000 | 20 min | hard limit |
 | `edudfs.blockrecovery.timeout.ms` | 10000 | – | after that, a recovery may be restarted |
+| `edudfs.socket.timeout.ms` | – (XML) | 60 s | short form of `dfs.client.socket-timeout` |
 | `edudfs.namenode.host`, `edudfs.namenode.port` | from `fs.defaultFS` | | override host/port |
 | `edudfs.conf.dir` | `conf` | `$HADOOP_CONF_DIR` | directory with the XML files |
 | `edudfs.quiet` | false | – | suppress INFO logs |

@@ -71,6 +71,15 @@ class BlockReceiver implements Closeable {
         try {
             while (true) {
                 Packet p = Packet.read(in);
+                if (p.isHeartbeatPacket()) {
+                    // idle pipeline: only forward and acknowledge, nothing to write
+                    if (mirrorOut != null) {
+                        p.write(mirrorOut);
+                        mirrorOut.flush();
+                    }
+                    ackQueue.put(p);
+                    continue;
+                }
                 if (p.offsetInBlock != replica.getNumBytes()) {
                     overwritePartialChunk(p);
                 }

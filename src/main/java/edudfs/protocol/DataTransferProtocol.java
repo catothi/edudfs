@@ -1,5 +1,7 @@
 package edudfs.protocol;
 
+import edudfs.common.HdfsConfig;
+
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -29,7 +31,7 @@ public final class DataTransferProtocol {
     public static final short ERROR = 1;
 
     public static final int CONNECT_TIMEOUT_MS = 5000;
-    public static final int READ_TIMEOUT_MS = 60000;
+    public static final int READ_TIMEOUT_MS = (int) HdfsConfig.SOCKET_TIMEOUT_MS;
 
     private DataTransferProtocol() {
     }
