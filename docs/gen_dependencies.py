@@ -1,24 +1,31 @@
 #!/usr/bin/env python3
 """
-Generates docs/DEPENDENCIES.md: the dependencies of ALL classes of EduDFS.
+Generates the dependencies of ALL classes of one project:
+  edudfs (default) -> docs/DEPENDENCIES.md
+  edubase          -> docs/EDUBASE_DEPENDENCIES.md
 
 Sources:
   1. Source code analysis (comments/strings removed, identifiers matched against all project classes)
      - also finds constants that javac inlines (e.g. HdfsConfig.BYTES_PER_CHECKSUM)
   2. jdeps on the bytecode (if out/ exists and jdeps is available)
 
-Usage (in the project directory):  ./hdfs build && python3 docs/gen_dependencies.py
+Usage (in the project directory):  ./hdfs build && python3 docs/gen_dependencies.py [edudfs|edubase]
 """
 import re
 import subprocess
+import sys
 from collections import defaultdict
 from pathlib import Path
 
+PROJECT = sys.argv[1] if len(sys.argv) > 1 else "edudfs"
+if PROJECT not in ("edudfs", "edubase"):
+    sys.exit("usage: gen_dependencies.py [edudfs|edubase]")
+TITLE = {"edudfs": "EduDFS", "edubase": "EduBase"}[PROJECT]
 ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "src" / "main" / "java"
+SRC = ROOT / "src" / "main" / "java" / PROJECT
 OUT = ROOT / "out"
-TARGET = ROOT / "docs" / "DEPENDENCIES.md"
-PREFIX = "edudfs."
+TARGET = ROOT / "docs" / ("DEPENDENCIES.md" if PROJECT == "edudfs" else "EDUBASE_DEPENDENCIES.md")
+PREFIX = PROJECT + "."
 
 
 def strip_comments_and_strings(code: str) -> str:
@@ -39,7 +46,7 @@ for f in sorted(SRC.rglob("*.java")):
     code = strip_comments_and_strings(text)
 
     decl = re.search(
-        r"^(public\s+)?((?:abstract|final)\s+)*(class|interface|enum)\s+" + name +
+        r"^(public\s+)?((?:abstract|final)\s+)*(class|interface|enum|record)\s+" + name +
         r"\b([^{]*)\{", code, re.M)
     kind = decl.group(3)
     if kind == "class" and decl.group(2) and "abstract" in decl.group(2):
@@ -54,7 +61,7 @@ for f in sorted(SRC.rglob("*.java")):
 
     # Purpose: first paragraph of the Javadoc directly before the type declaration
     doc = ""
-    m = re.search(r"/\*\*(.*?)\*/\s*(?:@\w+\s*)*(?:public\s+)?(?:(?:abstract|final)\s+)*(?:class|interface|enum)\s+"
+    m = re.search(r"/\*\*(.*?)\*/\s*(?:@\w+\s*)*(?:public\s+)?(?:(?:abstract|final)\s+)*(?:class|interface|enum|record)\s+"
                   + name + r"\b", text, re.S)
     if m:
         lines = [ln.strip().lstrip("*").strip() for ln in m.group(1).splitlines()]
@@ -127,11 +134,13 @@ for fq, c in classes.items():
 
 
 def short_pkg(pkg):
+    if pkg == PROJECT:
+        return "(root)"
     return pkg[len(PREFIX):] if pkg.startswith(PREFIX) else pkg
 
 
 def node_id(fq):
-    return fq[len(PREFIX):].replace(".", "_")
+    return "root" if fq == PROJECT else fq[len(PREFIX):].replace(".", "_")
 
 
 packages = sorted({c["pkg"] for c in classes.values()})
@@ -145,14 +154,16 @@ for a, bs in deps.items():
 # ------------------------------------------------------------ build Markdown
 md = []
 w = md.append
-w("# EduDFS – Dependencies of All Classes\n")
+w(f"# {TITLE} – Dependencies of All Classes\n")
 w("> Generated automatically by `docs/gen_dependencies.py` – do not edit by hand.  ")
-w("> Regenerate: `./hdfs build && python3 docs/gen_dependencies.py`\n")
+w(f"> Regenerate: `./hdfs build && python3 docs/gen_dependencies.py{'' if PROJECT == 'edudfs' else ' edubase'}`\n")
 w(f"**{len(classes)} classes** in **{len(packages)} packages**, "
   f"**{sum(len(v) for v in deps.values())} class dependencies**. "
   f"Sources: source code analysis{' + `jdeps` (Bytecode)' if jdeps_used else ''}. "
-  "Inner classes (e.g. `LeaseManager.Lease`, `DFSOutputStream.DataStreamer`) are attributed to their outer "
-  "class. Package names are given without the prefix `edudfs.`.\n")
+  "Inner classes (e.g. " + ("`LeaseManager.Lease`, `DFSOutputStream.DataStreamer`" if PROJECT == "edudfs"
+                           else "`HFileBlockIndex.BlockIndexReader`, `WAL.Entry`") + ") are attributed to their outer "
+  f"class. Package names are given without the prefix `{PREFIX}`"
+  + ("" if PROJECT == "edudfs" else "; dependencies on EduDFS (`edudfs.*`) are not shown") + ".\n")
 w("**How to read:** “A → B” means *A uses B* (import, field, parameter, call, inheritance or constant).\n")
 
 w("## Contents\n")
@@ -188,22 +199,38 @@ w("### Cycles between packages\n")
 if cycles:
     for a, b in cycles:
         w(f"* `{short_pkg(a)}` ⇄ `{short_pkg(b)}` ({pkg_edges[(a, b)]} / {pkg_edges[(b, a)]} dependencies)")
-    w("\nThese cycles exist in exactly the same way in the Hadoop original: `FSNamesystem` owns the `BlockManager`, and the "
-      "`BlockManager` needs the lock or the file (`INodeFile`) of a block via the FSNamesystem.\n")
+    if PROJECT == "edudfs":
+        w("\nThese cycles exist in exactly the same way in the Hadoop original: `FSNamesystem` owns the `BlockManager`, "
+          "and the `BlockManager` needs the lock or the file (`INodeFile`) of a block via the FSNamesystem.\n")
+    else:
+        w("\nThe original has the same kind of cycles (e.g. the descriptors in `client` name the `BloomType` of "
+          "`regionserver`, and the RegionServer returns client types such as `Result`).\n")
 else:
     w("None.\n")
 
 w("### Layering\n")
-w("* `common` and `protocol` depend on no server or client package – they are the shared foundation.")
-client_srv = [k for k in pkg_edges if short_pkg(k[0]) == "client" and short_pkg(k[1]).startswith("server")]
-w("* `client` does " + ("**not** " if not client_srv else "") +
-  "depend on `server.*` – client and server share only the protocol classes.")
-dn_nn = [k for k in pkg_edges if short_pkg(k[0]) == "server.datanode"
-         and short_pkg(k[1]) in ("server.namenode", "server.blockmanagement")]
-w("* `server.datanode` does " + ("**not** " if not dn_nn else "") +
-  "depend on `server.namenode`/`server.blockmanagement` – DataNode and NameNode know each other only via "
-  "`server.protocol`.")
-w("* `tools` sits on top and uses everything.\n")
+if PROJECT == "edubase":
+    master_rs = [k for k in pkg_edges if short_pkg(k[0]) == "regionserver" and short_pkg(k[1]) == "master"]
+    w("* `regionserver` does " + ("**not** " if not master_rs else "") + "depend on `master` – RegionServer and "
+      "master know each other only via `ipc`.")
+    client_master = [k for k in pkg_edges if short_pkg(k[0]) == "client" and short_pkg(k[1]) == "master"]
+    w("* `client` does " + ("**not** " if not client_master else "") + "depend on `master`.")
+    low = ("io", "io.hfile", "util", "codec")
+    up = [k for k in pkg_edges if short_pkg(k[0]) in low and short_pkg(k[1]) in ("regionserver", "master", "client")]
+    w("* `io.hfile`, `io`, `util` and `codec` " + ("do **not** depend on" if not up else "depend on")
+      + " `regionserver`, `master` or `client` – the HFile format stands on its own.")
+    w("* `tools` sits on top and uses everything.\n")
+if PROJECT == "edudfs":
+    w("* `common` and `protocol` depend on no server or client package – they are the shared foundation.")
+    client_srv = [k for k in pkg_edges if short_pkg(k[0]) == "client" and short_pkg(k[1]).startswith("server")]
+    w("* `client` does " + ("**not** " if not client_srv else "") +
+      "depend on `server.*` – client and server share only the protocol classes.")
+    dn_nn = [k for k in pkg_edges if short_pkg(k[0]) == "server.datanode"
+             and short_pkg(k[1]) in ("server.namenode", "server.blockmanagement")]
+    w("* `server.datanode` does " + ("**not** " if not dn_nn else "") +
+      "depend on `server.namenode`/`server.blockmanagement` – DataNode and NameNode know each other only via "
+      "`server.protocol`.")
+    w("* `tools` sits on top and uses everything.\n")
 
 # 2. inheritance
 w("## 2. Inheritance and interfaces\n")
@@ -261,7 +288,7 @@ for p in packages:
         c = classes[fq]
         w(f"#### `{c['name']}`\n")
         rel = fq[len(PREFIX):].replace(".", "/")
-        w(f"*{c['kind']}* · [`src/main/java/edudfs/{rel}.java`](../src/main/java/edudfs/{rel}.java) · "
+        w(f"*{c['kind']}* · [`src/main/java/{PROJECT}/{rel}.java`](../src/main/java/{PROJECT}/{rel}.java) · "
           f"{c['lines']} lines\n")
         if c["doc"]:
             w(f"{c['doc']}\n")
