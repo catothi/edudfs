@@ -224,6 +224,10 @@ class HFileTest {
         String page = java.nio.file.Files.readString(html.toPath());
         assertTrue(page.contains("const D = {"));
         assertFalse(page.contains("__DATA__"));
+        // legend entries of the single small blocks select them like a click in the bar
+        assertTrue(page.contains("const LEGEND_JUMP = [\"FILE_INFO\", \"GENERAL_BLOOM_META\", \"TRAILER\"];"));
+        assertTrue(page.contains("\"t\":\"FILE_INFO\""));
+        assertTrue(page.contains("\"t\":\"TRAILER\""));
     }
 
     @Test

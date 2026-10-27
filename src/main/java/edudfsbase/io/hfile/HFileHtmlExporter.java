@@ -128,6 +128,8 @@ public class HFileHtmlExporter {
             .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0; font-size: 12.5px; }
             .legend span::before { content: ""; display: inline-block; width: 11px; height: 11px; border-radius: 2px;
               margin-right: 5px; vertical-align: -1px; background: var(--c); }
+            .legend span.jump { cursor: pointer; }
+            .legend span.jump:hover { text-decoration: underline; }
             .sections { display: flex; width: 100%; font-size: 11.5px; color: var(--muted); }
             .sections div { border-left: 1px solid var(--line); padding: 0 4px; overflow: hidden; white-space: nowrap;
               text-overflow: ellipsis; }
@@ -235,7 +237,17 @@ public class HFileHtmlExporter {
 
             // ---- legend, sections, bar
             const present = [...new Set(D.blocks.map(typeOf))];
-            el("legend").innerHTML = present.map(t => `<span style="--c:${COLORS(t)}">${NAMES[t]}</span>`).join("");
+            // FileInfo, Bloom meta and trailer exist once and are thin in the bar: their legend entry selects them
+            const LEGEND_JUMP = ["FILE_INFO", "GENERAL_BLOOM_META", "TRAILER"];
+            el("legend").innerHTML = present.map(t => {
+              const b = LEGEND_JUMP.includes(t) && D.blocks.find(x => typeOf(x) === t);
+              return b ? `<span class="jump" data-j="${b.o}" title="show block @${b.o}" style="--c:${COLORS(t)}">${NAMES[t]}</span>`
+                : `<span style="--c:${COLORS(t)}">${NAMES[t]}</span>`;
+            }).join("");
+            el("legend").querySelectorAll("span.jump").forEach(s => s.onclick = () => {
+              select(+s.dataset.j);
+              el("detail").scrollIntoView({ behavior: "smooth", block: "start" });
+            });
             const secs = [];
             for (const b of D.blocks) {
               if (!secs.length || secs[secs.length - 1].name !== b.sec) secs.push({ name: b.sec, bytes: 0 });
