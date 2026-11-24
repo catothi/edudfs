@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parquet Benchmark</title>
+<style>
+:root {
+  color-scheme: light;
+  --surface: #fcfcfb; --panel: #f4f3f0; --line: #dddcd7; --grid: #e9e8e4;
+  --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #77766f;
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a;
+  --warn-bg: #fff4d6; --bad: #c4352f;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --surface: #1a1a19; --panel: #222220; --line: #3a3936; --grid: #2c2b29;
+    --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #9a998f;
+    --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70;
+    --warn-bg: #3a3014; --bad: #e66767;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: #1a1a19; --panel: #222220; --line: #3a3936; --grid: #2c2b29;
+  --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #9a998f;
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70;
+  --warn-bg: #3a3014; --bad: #e66767;
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 20px 16px 60px; background: var(--surface); color: var(--text-primary);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1180px; margin: 0 auto; }
+h1 { font-size: 22px; margin: 0 0 2px; }
+h2 { font-size: 16px; margin: 32px 0 4px; }
+.sub, .note { color: var(--text-secondary); }
+.note { font-size: 13px; }
+code, .mono, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+.controls { position: sticky; top: 0; z-index: 5; background: var(--surface); padding: 12px 0;
+  border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: end; margin-top: 12px; }
+.controls label { display: grid; gap: 3px; font-size: 12px; color: var(--text-secondary); }
+select, button { font: inherit; font-size: 13.5px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--panel); color: var(--text-primary); }
+button { cursor: pointer; }
+button.primary { background: var(--series-1); border-color: var(--series-1); color: #fff; }
+button:disabled { opacity: .5; cursor: progress; }
+pre.sql { margin: 8px 0 0; padding: 8px 10px; background: var(--panel); border-radius: 6px; white-space: pre-wrap; }
+.card { border: 1px solid var(--line); border-radius: 8px; padding: 14px; background: var(--surface); margin-top: 10px; }
+.bars { display: grid; grid-template-columns: minmax(150px, 230px) minmax(0, 1fr) auto; gap: 0 12px; align-items: center; }
+.bars .hd { font-size: 12px; color: var(--text-muted); padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.bars .lab { padding: 7px 0; border-bottom: 1px solid var(--grid); }
+.bars .lab b { display: block; font-weight: 600; }
+.bars .lab span { font-size: 12px; color: var(--text-muted); }
+.bars .track { position: relative; height: 34px; border-bottom: 1px solid var(--grid); }
+.bars .bar { position: absolute; left: 0; top: 11px; height: 12px; border-radius: 0 4px 4px 0; background: var(--series-1); }
+.bars .bar.broken { border-radius: 0; -webkit-mask: linear-gradient(90deg, #000 calc(100% - 14px), transparent calc(100% - 14px),
+  transparent calc(100% - 10px), #000 calc(100% - 10px), #000 calc(100% - 6px), transparent calc(100% - 6px)); }
+.bars .val { position: absolute; top: 7px; font-size: 12.5px; color: var(--text-primary); white-space: nowrap; }
+.bars .stat { font-size: 12px; color: var(--text-secondary); padding: 7px 0; border-bottom: 1px solid var(--grid);
+  text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bars .row { display: contents; }
+.bars .row:hover > * { background: var(--panel); }
+.state { font-size: 12px; color: var(--text-muted); }
+.state.busy { color: var(--series-1); }
+.state.err { color: var(--bad); }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+@media (min-width: 980px) { .grid2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.chart-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+.chart-head h3 { margin: 0; font-size: 15px; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-secondary); margin: 6px 0; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 14px; height: 2px; background: var(--c); display: inline-block; position: relative; }
+.legend i::after { content: ""; position: absolute; left: 3px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+svg { display: block; width: 100%; height: auto; overflow: visible; }
+svg text { font: 11.5px system-ui, sans-serif; fill: var(--text-muted); }
+svg .gridline { stroke: var(--grid); }
+svg .axis { stroke: var(--line); }
+svg .line { fill: none; stroke-width: 2; }
+svg .dot { stroke: var(--surface); stroke-width: 2; }
+svg .best { font-size: 11.5px; fill: var(--text-primary); font-weight: 600; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; padding: 4px 9px; font-size: 12px; background: transparent; }
+.seg button.on { background: var(--panel); font-weight: 600; }
+table.data { border-collapse: collapse; width: 100%; font-size: 12.5px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+table.data th, table.data td { text-align: right; padding: 4px 8px; border-bottom: 1px solid var(--grid); }
+table.data th:first-child, table.data td:first-child { text-align: left; }
+table.data th { color: var(--text-muted); font-weight: 600; }
+details summary { cursor: pointer; color: var(--text-secondary); font-size: 13px; margin-top: 8px; }
+.tip { position: fixed; pointer-events: none; z-index: 20; background: var(--text-primary); color: var(--surface);
+  padding: 7px 9px; border-radius: 6px; font-size: 12px; line-height: 1.4; max-width: 320px; display: none; }
+.lessons { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-top: 10px; }
+.lessons div { background: var(--panel); border-radius: 6px; padding: 8px 10px; font-size: 13px; }
+.warn { background: var(--warn-bg); border-radius: 6px; padding: 6px 10px; font-size: 13px; margin-top: 8px; }
+.result { font-size: 12.5px; }
+</style>
+</head>
+<body>
+<main>
+<h1>Parquet Benchmark</h1>
+<div class="sub">The same 200,000 orders, stored in different ways in EduDFS. Each query runs with pyarrow over HttpFS and is
+timed from opening the dataset (directory listing, footers) to the aggregated result.</div>
+
+<div class="controls">
+  <label>Query <select id="query"></select></label>
+  <label>Storage (simulated per request) <select id="storage"></select></label>
+  <label>Repetitions (median) <select id="repeat"><option>1</option><option selected>3</option><option>5</option></select></label>
+  <div class="state" id="global"></div>
+</div>
+<pre class="sql" id="sql"></pre>
+<div class="note" id="storagenote"></div>
+
+<h2>1 · CSV vs. Parquet: format, sort order, partitioning</h2>
+<div class="note">One bar per layout, time in ms (median). The answer is the same everywhere - only the bytes and requests differ.</div>
+<div class="card">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <button class="primary" id="runFormats">Run all layouts</button>
+    <span class="note">The over-partitioned layout has ~3,300 files and takes long (with the S3 preset several minutes) - tick it to include it:</span>
+    <label class="note"><input type="checkbox" id="withDay"> include “country + day”</label>
+  </div>
+  <div class="bars" id="formats"></div>
+  <details><summary>Result of the last run</summary><div class="result" id="result"></div></details>
+</div>
+<div class="lessons">
+  <div><b>CSV</b> is read completely and parsed as text - no matter which columns or rows the query needs.</div>
+  <div><b>Shuffled</b> Parquet: projection still works, but min/max of every row group covers everything - no row group is skipped.</div>
+  <div><b>ORDER BY / partitioning</b> make statistics and directories selective - if the query filters on that column.</div>
+  <div><b>Too many partitions</b>: thousands of tiny files, every one costs a listing, a footer read and a request.</div>
+</div>
+
+<h2>2 · Sweet spots</h2>
+<div class="note">Run a sweep with one storage preset, switch the preset and run it again - each preset becomes its own
+line (“× best” compares the shapes). <b>Files:</b> every extra file costs a listing entry, a footer read and requests -
+the curve only rises. <b>Row groups:</b> U-shaped - too big and nothing can be skipped, too small and the overhead per
+row group (footer entries, requests, pages) dominates.</div>
+<div class="grid2">
+  <div class="card">
+    <div class="chart-head"><h3>Number of files</h3>
+      <div class="seg" data-chart="files"><button class="on" data-mode="abs">ms</button><button data-mode="rel">× best</button></div></div>
+    <div class="note">The data (time order, 25,000 rows per row group) split into 1 … 1,024 files.</div>
+    <div class="legend" id="legend-files"></div>
+    <svg id="chart-files" viewBox="0 0 520 260"></svg>
+    <button class="primary" data-sweep="files">Run sweep</button> <span class="state" id="state-files"></span>
+    <details><summary>Table</summary><div id="table-files"></div></details>
+  </div>
+  <div class="card">
+    <div class="chart-head"><h3>Rows per row group</h3>
+      <div class="seg" data-chart="rowgroups"><button class="on" data-mode="abs">ms</button><button data-mode="rel">× best</button></div></div>
+    <div class="note">One file, row group size from 1,000 to 200,000 rows (= one row group).</div>
+    <div class="legend" id="legend-rowgroups"></div>
+    <svg id="chart-rowgroups" viewBox="0 0 520 260"></svg>
+    <button class="primary" data-sweep="rowgroups">Run sweep</button> <span class="state" id="state-rowgroups"></span>
+    <details><summary>Table</summary><div id="table-rowgroups"></div></details>
+  </div>
+</div>
+<div class="warn" id="sweetnote">Why not one huge file? Here 1 file = 5 MB. In production a file is also the unit of parallel
+work (one task per file or row group), so the sweet spot is files of 128 MB - 1 GB with row groups of ~128 MB - big enough
+that a request costing milliseconds is worth it, small enough to skip and to spread over workers. Try the query
+“Total revenue” (nothing to skip): the row group curve flattens, only the overhead remains.</div>
+</main>
+<div class="tip" id="tip"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmtMs = ms => ms >= 10000 ? (ms / 1000).toFixed(1) + " s" : ms >= 1000 ? (ms / 1000).toFixed(2) + " s" : ms.toFixed(ms < 10 ? 1 : 0) + " ms";
+const fmtB = b => b >= 1048576 ? (b / 1048576).toFixed(1) + " MB" : (b / 1024).toFixed(0) + " KB";
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const SERIES = {local: "var(--series-1)", hdfs: "var(--series-2)", s3: "var(--series-3)"};   // color follows the preset
+let M, STATUS = {}, busy = false;
+const R = {};   // R[query][storage][setup] = result
+const mode = {files: "abs", rowgroups: "abs"};
+
+async function api(path, body) {
+  const r = await fetch(path, body ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)} : {});
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+const q = () => $("query").value, st = () => $("storage").value;
+const res = (query = q(), storage = st()) => ((R[query] ||= {})[storage] ||= {});
+
+async function runSetup(key, onState) {
+  const big = (STATUS[key]?.files || 0) > 200 || key === "by_country_day";
+  const repeat = big ? 1 : +$("repeat").value;
+  onState(STATUS[key]?.exists ? `running${repeat > 1 ? ` ×${repeat}` : ""} …` : "writing the files to EduDFS, then running …", "busy");
+  const r = await api("/api/run", {setup: key, query: q(), storage: st(), repeat});
+  STATUS[key] = {exists: true, files: r.files, bytes: r.bytes};
+  res()[key] = r;
+  onState("", "");
+  return r;
+}
+async function guarded(fn) {
+  if (busy) return;
+  busy = true;
+  document.querySelectorAll("button.primary").forEach(b => b.disabled = true);
+  try { await fn(); } catch (e) { $("global").textContent = "Error: " + e.message; $("global").className = "state err"; }
+  busy = false;
+  document.querySelectorAll("button.primary").forEach(b => b.disabled = false);
+}
+
+// ------------------------------------------------------------------ 1: formats
+const FORMAT_KEYS = () => Object.keys(M.setups).filter(k => M.setups[k].group === "formats");
+function drawFormats(stateOf = {}) {
+  const r = res(), keys = FORMAT_KEYS();
+  const vals = keys.map(k => r[k]?.ms).filter(v => v !== undefined).sort((a, b) => b - a);
+  // broken axis: if one value is > 3x the next one, the scale ends at 1.6x the second largest and the long bar is cut
+  let max = vals[0] || 1, broken = false;
+  if (vals.length > 1 && vals[0] > 3 * vals[1]) { max = vals[1] * 1.6; broken = true; }
+  const best = vals.length ? vals[vals.length - 1] : null;
+  let h = `<div class="hd">Layout</div><div class="hd">Time (median)${broken ? " - axis cut, see value" : ""}</div><div class="hd" style="text-align:right">read · requests · files</div>`;
+  for (const k of keys) {
+    const s = M.setups[k], x = r[k], state = stateOf[k];
+    const w = x ? Math.min(x.ms / max, 1) * 100 : 0, cut = x && x.ms > max;
+    h += `<div class="row" data-k="${k}"><div class="lab"><b>${esc(s.label)}</b><span>${esc(s.note)}</span></div>
+      <div class="track">${x ? `<div class="bar${cut ? " broken" : ""}" style="width:max(3px, calc((100% - 120px) * ${w / 100}))"></div>
+        <div class="val" style="left:calc(max(3px, (100% - 120px) * ${w / 100}) + 6px)">${fmtMs(x.ms)}${best && x.ms > best * 1.5 ? ` <span class="state">×${(x.ms / best).toFixed(x.ms / best < 10 ? 1 : 0)}</span>` : ""}</div>`
+        : `<div class="state ${state?.[1] || ""}" style="padding-top:8px">${esc(state?.[0] || (STATUS[k]?.exists ? "not run yet" : "not created yet - run writes it"))}</div>`}</div>
+      <div class="stat">${x ? `${fmtB(x.bytes_read)} of ${fmtB(x.bytes)}<br>${x.data_requests} + ${x.meta_requests} meta · ${x.files_opened}/${x.files} files` : ""}</div></div>`;
+  }
+  $("formats").innerHTML = h;
+  $("formats").querySelectorAll(".row").forEach(row => {
+    const x = r[row.dataset.k];
+    if (!x) return;
+    hover(row, () => `<b>${esc(M.setups[row.dataset.k].label)}</b><br>median ${fmtMs(x.ms)} (runs: ${x.runs_ms.map(fmtMs).join(", ")})<br>`
+      + `read ${fmtB(x.bytes_read)} of ${fmtB(x.bytes)} (${(x.bytes_read / x.bytes * 100).toFixed(1)} %)<br>`
+      + `${x.data_requests} data requests, ${x.meta_requests} metadata requests<br>${x.files_opened} of ${x.files} files opened`);
+  });
+}
+$("runFormats").onclick = () => guarded(async () => {
+  const keys = FORMAT_KEYS().filter(k => k !== "by_country_day" || $("withDay").checked);
+  const stateOf = {};
+  for (const k of keys) {
+    const r = await runSetup(k, (t, c) => { stateOf[k] = [t, c]; drawFormats(stateOf); });
+    showResult(k, r);
+    drawFormats(stateOf);
+  }
+});
+function showResult(k, r) {
+  const cols = r.result.length ? Object.keys(r.result[0]) : [];
+  $("result").innerHTML = `<div class="note">${esc(M.setups[k].label)}: ${r.result_rows} row(s)</div><table class="data"><tr>${cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr>`
+    + r.result.map(row => `<tr>${cols.map(c => `<td>${esc(typeof row[c] === "number" ? row[c].toLocaleString("en-US") : row[c])}</td>`).join("")}</tr>`).join("") + "</table>";
+}
+
+// ------------------------------------------------------------------ 2: sweeps
+const SWEEP_KEYS = g => Object.keys(M.setups).filter(k => M.setups[k].group === g).sort((a, b) => M.setups[a].x - M.setups[b].x);
+function drawSweep(g) {
+  const keys = SWEEP_KEYS(g), svg = $("chart-" + g), W = 520, H = 260, L = 52, Rm = 14, T = 14, B = 40;
+  const presets = Object.keys(M.storage).filter(p => keys.some(k => res(q(), p)[k]));
+  const val = (p, k) => {
+    const x = res(q(), p)[k];
+    if (!x) return null;
+    if (mode[g] === "abs") return x.ms;
+    const best = Math.min(...keys.map(kk => res(q(), p)[kk]?.ms).filter(v => v !== undefined));
+    return x.ms / best;
+  };
+  const all = presets.flatMap(p => keys.map(k => val(p, k))).filter(v => v !== null);
+  const ymax = niceMax(all.length ? Math.max(...all) : 1);
+  const ymin = mode[g] === "rel" ? 1 : 0;
+  const xs = i => L + (keys.length === 1 ? 0 : i * (W - L - Rm) / (keys.length - 1));
+  const ys = v => T + (H - T - B) * (1 - (v - ymin) / (ymax - ymin));
+  let s = "";
+  for (const t of ticks(ymin, ymax)) {
+    s += `<line class="gridline" x1="${L}" x2="${W - Rm}" y1="${ys(t)}" y2="${ys(t)}"/>`
+      + `<text x="${L - 6}" y="${ys(t) + 4}" text-anchor="end">${mode[g] === "abs" ? fmtMs(t) : "×" + t}</text>`;
+  }
+  s += `<line class="axis" x1="${L}" x2="${W - Rm}" y1="${H - B}" y2="${H - B}"/>`;
+  keys.forEach((k, i) => s += `<text x="${xs(i)}" y="${H - B + 16}" text-anchor="middle">${M.setups[k].x.toLocaleString("en-US")}</text>`);
+  s += `<text x="${(L + W - Rm) / 2}" y="${H - 6}" text-anchor="middle">${g === "files" ? "number of files (log scale)" : "rows per row group (log scale)"}</text>`;
+  for (const p of presets) {
+    const pts = keys.map((k, i) => [i, val(p, k), k]).filter(([, v]) => v !== null);
+    s += `<polyline class="line" style="stroke:${SERIES[p]}" points="${pts.map(([i, v]) => `${xs(i)},${ys(v)}`).join(" ")}"/>`;
+    const bestPt = pts.reduce((a, b) => (b[1] < a[1] ? b : a), pts[0]);
+    for (const [i, v, k] of pts) {
+      s += `<circle class="dot" data-p="${p}" data-k="${k}" cx="${xs(i)}" cy="${ys(v)}" r="5" style="fill:${SERIES[p]}"/>`;
+    }
+    if (pts.length === keys.length) s += `<text class="best" x="${xs(bestPt[0])}" y="${ys(bestPt[1]) - 10}" text-anchor="middle">best</text>`;
+  }
+  // hit targets bigger than the marks
+  keys.forEach((k, i) => presets.forEach(p => {
+    const v = val(p, k);
+    if (v !== null) s += `<circle class="hit" data-p="${p}" data-k="${k}" cx="${xs(i)}" cy="${ys(v)}" r="14" fill="transparent"/>`;
+  }));
+  svg.innerHTML = s;
+  svg.querySelectorAll(".hit").forEach(c => hover(c, () => {
+    const x = res(q(), c.dataset.p)[c.dataset.k];
+    return `<b>${esc(M.setups[c.dataset.k].label)}</b> · ${esc(c.dataset.p)}<br>median ${fmtMs(x.ms)}<br>read ${fmtB(x.bytes_read)} of ${fmtB(x.bytes)}<br>`
+      + `${x.data_requests} data + ${x.meta_requests} metadata requests<br>${x.files_opened}/${x.files} files opened`;
+  }));
+  $("legend-" + g).innerHTML = presets.length > 1 ? presets.map(p => `<span style="--c:${SERIES[p]}"><i></i>${esc(p)}</span>`).join("")
+    : presets.length ? `<span class="note">storage: ${esc(M.storage[presets[0]].label)}</span>` : `<span class="note">not run yet for this query</span>`;
+  let t = `<table class="data"><tr><th>${g === "files" ? "files" : "rows / row group"}</th>${presets.map(p => `<th>${esc(p)} ms</th><th>read</th><th>requests</th>`).join("")}</tr>`;
+  for (const k of keys) {
+    t += `<tr><td>${M.setups[k].x.toLocaleString("en-US")}</td>` + presets.map(p => {
+      const x = res(q(), p)[k];
+      return x ? `<td>${x.ms.toFixed(1)}</td><td>${fmtB(x.bytes_read)}</td><td>${x.data_requests + x.meta_requests}</td>` : "<td>–</td><td></td><td></td>";
+    }).join("") + "</tr>";
+  }
+  $("table-" + g).innerHTML = t + "</table>";
+}
+function niceMax(v) { const e = Math.pow(10, Math.floor(Math.log10(v))); return [1, 2, 2.5, 5, 10].map(m => m * e).find(m => m >= v) || v; }
+function ticks(a, b) { const n = 4, step = (b - a) / n; return Array.from({length: n + 1}, (_, i) => +(a + i * step).toPrecision(3)); }
+document.querySelectorAll("[data-sweep]").forEach(b => b.onclick = () => guarded(async () => {
+  const g = b.dataset.sweep;
+  for (const k of SWEEP_KEYS(g)) {
+    await runSetup(k, (t, c) => { $("state-" + g).textContent = t ? `${M.setups[k].label}: ${t}` : ""; $("state-" + g).className = "state " + c; });
+    drawSweep(g);
+  }
+}));
+document.querySelectorAll(".seg").forEach(seg => seg.querySelectorAll("button").forEach(btn => btn.onclick = () => {
+  mode[seg.dataset.chart] = btn.dataset.mode;
+  seg.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === btn));
+  drawSweep(seg.dataset.chart);
+}));
+
+// ------------------------------------------------------------------ tooltip
+function hover(el, html) {
+  const tip = $("tip");
+  el.addEventListener("mousemove", e => {
+    tip.innerHTML = html(); tip.style.display = "block";
+    const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8);
+    tip.style.left = x + "px"; tip.style.top = (e.clientY + 14) + "px";
+  });
+  el.addEventListener("mouseleave", () => tip.style.display = "none");
+}
+
+// ------------------------------------------------------------------ start
+function redraw() {
+  $("sql").textContent = M.queries[q()].sql;
+  $("storagenote").textContent = "Storage: " + M.storage[st()].label + ".";
+  drawFormats(); drawSweep("files"); drawSweep("rowgroups");
+}
+(async () => {
+  M = await api("/api/meta");
+  $("query").innerHTML = Object.entries(M.queries).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join("");
+  $("query").value = "q3";
+  $("storage").innerHTML = Object.entries(M.storage).map(([k, v]) => `<option value="${k}">${esc(k)} - ${esc(v.label.split(":")[0])}</option>`).join("");
+  $("storage").value = "hdfs";
+  $("query").onchange = $("storage").onchange = redraw;
+  redraw();
+  $("global").textContent = "checking which layouts exist in EduDFS …";
+  STATUS = await api("/api/status");
+  $("global").textContent = "";
+  redraw();
+  // http://localhost:8050/#run runs everything once (handy in the lecture: open the page, talk, results appear)
+  if (location.hash === "#run") {
+    await new Promise(r => setTimeout(r, 0));
+    $("runFormats").click(); while (busy) await new Promise(r => setTimeout(r, 200));
+    for (const g of ["files", "rowgroups"]) { document.querySelector(`[data-sweep="${g}"]`).click(); while (busy) await new Promise(r => setTimeout(r, 200)); }
+  }
+})().catch(e => { $("global").textContent = "Error: " + e.message + " - is ./hdfs httpfs running?"; $("global").className = "state err"; });
+</script>
+</body>
+</html>

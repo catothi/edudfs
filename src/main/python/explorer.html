@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parquet Explorer</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff; --fg: #1d2330; --muted: #5d6677; --line: #d8dde6; --panel: #f5f7fa; --hl: #fff3c4;
+  --magic: #4a5468; --footer: #2f5fb3; --run-rle: #c4661f; --run-bp: #3a6fc0; --ok: #2f9e6e; --bad: #d0517a; --rg: #f6d58a; --rgbg: #fdf3dc;
+  --c0: #e5534b; --c1: #4f7cd6; --c2: #2fae7e; --c3: #e0a030; --c4: #8a5cc7;
+  --c5: #17a2b8; --c6: #d0517a; --c7: #7a8c2e; --c8: #c26b2f; --c9: #5d6f9e;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #14171d; --fg: #e3e7ee; --muted: #9aa4b5; --line: #2c323d; --panel: #1c2028; --hl: #4a3f12;
+    --magic: #8691a6; --footer: #6f9be8; --rg: #8a6a22; --rgbg: #241f14; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+h2 { font-size: 15px; margin: 26px 0 8px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+.sub { color: var(--muted); word-break: break-all; }
+.note { color: var(--muted); font-size: 12.5px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0; font-size: 12.5px; }
+.legend span::before { content: ""; display: inline-block; width: 11px; height: 11px; border-radius: 2px;
+  margin-right: 5px; vertical-align: -1px; background: var(--c); }
+.ruler, .sections { position: relative; height: 20px; font-size: 11px; color: var(--muted); }
+.ruler div, .sections div { position: absolute; top: 0; height: 100%; border-left: 1px solid var(--muted);
+  padding: 0 4px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ruler div.touched { color: var(--fg); font-weight: 600; background: var(--hl); }
+.bar { position: relative; width: 100%; height: 38px; border: 1px solid var(--line); border-radius: 4px;
+  overflow: hidden; background: var(--panel); }
+.bar div { position: absolute; top: 0; height: 100%; min-width: 2px; border-right: 1px solid var(--bg);
+  cursor: pointer; transition: opacity .15s; }
+.bar div.unread { opacity: .14; }
+.bar div.sel { outline: 3px solid var(--fg); outline-offset: -3px; }
+.bar .blk { position: absolute; top: 0; height: 100%; border-left: 2px dashed var(--fg); pointer-events: none;
+  opacity: .55; background: none; min-width: 0; }
+.panel { border: 1px solid var(--line); border-radius: 4px; background: var(--panel); padding: 12px; min-width: 0; }
+.sim { display: grid; gap: 10px; }
+.sim .cols { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.sim label { white-space: nowrap; font-size: 13px; }
+.sim input[type=text] { font: inherit; font-family: ui-monospace, Menlo, monospace; font-size: 13px; padding: 5px 8px;
+  border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--fg); width: 100%; }
+.sim .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.sim .row > div:first-child { flex: 1 1 320px; }
+button { font: inherit; padding: 5px 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg);
+  color: var(--fg); cursor: pointer; }
+.examples button { font-size: 12px; padding: 2px 8px; margin: 2px 4px 2px 0; font-family: ui-monospace, Menlo, monospace; }
+.kpis { display: flex; flex-wrap: wrap; gap: 10px; }
+.kpi { border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; background: var(--bg); min-width: 150px; }
+.kpi b { display: block; font-size: 18px; }
+.kpi span { color: var(--muted); font-size: 12px; }
+.rgs { display: flex; gap: 10px; overflow-x: auto; padding: 10px; border: 2px solid var(--rg); border-radius: 6px;
+  background: var(--rgbg); }
+.rgcard { flex: 0 0 210px; border: 2px solid var(--rg); border-radius: 5px; padding: 6px; background: var(--bg);
+  transition: opacity .15s; }
+.rgcard.unread { opacity: .3; }
+.rgcard h3 { margin: 0 0 6px; font-size: 13px; text-align: center; }
+.chunk { border: 1px solid var(--line); border-left: 6px solid var(--c); border-radius: 4px; padding: 3px 5px;
+  margin-bottom: 4px; cursor: pointer; font-size: 11.5px; background: var(--panel); }
+.chunk.unread { opacity: .3; }
+.chunk.sel { outline: 2px solid var(--fg); }
+.chunk .n { display: flex; justify-content: space-between; color: var(--muted); }
+.pills { display: flex; gap: 3px; overflow: hidden; margin-top: 2px; }
+.pills span { background: var(--c); color: #fff; border-radius: 9px; padding: 0 6px; font-size: 10.5px;
+  white-space: nowrap; max-width: 70px; overflow: hidden; text-overflow: ellipsis; }
+table { border-collapse: collapse; width: 100%; }
+td, th { text-align: left; padding: 3px 8px 3px 0; vertical-align: top; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 600; font-size: 12.5px; }
+.scroll { overflow-x: auto; }
+.stats td { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; white-space: nowrap; }
+.stats td.match { background: color-mix(in srgb, var(--ok) 22%, transparent); }
+.stats td.nomatch { background: color-mix(in srgb, var(--bad) 28%, transparent); font-weight: 700; }
+.stats tr.pruned td:not(.nomatch) { opacity: .4; }
+.page { display: flex; height: 22px; border-radius: 3px; overflow: hidden; border: 1px solid var(--line);
+  margin: 2px 0 8px; font-size: 10.5px; }
+.page div { display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap;
+  color: #fff; min-width: 3px; padding: 0 3px; }
+.page .ph { background: var(--magic); }
+.page .rl { background: #9aa3b2; }
+.page .dl { background: #17a2b8; }
+.page .vl { background: var(--c); }
+.page .dp { background: var(--c); filter: saturate(.55) brightness(1.1); }
+.colbox { border: 2px solid var(--line); border-left: 6px solid var(--c); border-radius: 5px; padding: 8px;
+  background: var(--bg); margin-top: 10px; }
+.colbox > .t { font-weight: 600; margin-bottom: 6px; }
+.pg { border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px 8px; margin: 6px 0; background: var(--panel); }
+.pg summary { cursor: pointer; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; padding: 3px 0; }
+.sec { --x: var(--magic); border: 1px solid color-mix(in srgb, var(--x) 55%, transparent); border-left: 5px solid var(--x);
+  border-radius: 3px; background: color-mix(in srgb, var(--x) 13%, var(--bg)); padding: 5px 8px; margin-top: 5px;
+  font-size: 12.5px; min-width: 0; }
+.sec.rl { --x: #9aa3b2; } .sec.dl { --x: #17a2b8; } .sec.vl { --x: var(--c); }
+.sec.absent { opacity: .6; border-style: dashed; border-left-style: solid; }
+.sec .h { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
+.sec .h span { font-weight: 400; color: var(--muted); white-space: nowrap; }
+.sec .d { color: var(--muted); margin-top: 2px; }
+.fields { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0 12px; margin-top: 3px;
+  font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
+.fields span:nth-child(odd) { color: var(--muted); }
+.strip { overflow-x: auto; margin-top: 4px; }
+.strip table { width: auto; }
+.strip th { font-size: 11px; white-space: nowrap; padding-right: 8px; }
+.strip td { font-family: ui-monospace, Menlo, monospace; font-size: 11px; text-align: center; padding: 1px 4px;
+  border: 1px solid var(--line); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.strip td.null { background: color-mix(in srgb, var(--bad) 25%, transparent); font-weight: 700; }
+.runs { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; margin-top: 3px; }
+.runs b.rle, .strip td.run.rle { color: #fff; background: var(--run-rle); }
+.runs b.bp, .strip td.run.bp { color: #fff; background: var(--run-bp); }
+.runs b { font-weight: 400; padding: 0 4px; border-radius: 3px; white-space: nowrap; }
+.strip td.run { font-size: 10.5px; text-align: left; max-width: none; border: 2px solid var(--panel); }
+.strip td.run.odd { filter: brightness(.82); }
+.stored { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px; margin-top: 5px; }
+.stored .box { border: 2px solid var(--run-bp); border-radius: 4px; padding: 2px 6px; text-align: center;
+  font-family: ui-monospace, Menlo, monospace; font-size: 12px; background: var(--panel); }
+.stored .box.rle { border-color: var(--run-rle); }
+.stored .box b { font-size: 13px; }
+.stored .box small { display: block; color: var(--muted); font-size: 10px; }
+.stored .arrow { align-self: center; color: var(--muted); }
+.hint { margin-top: 4px; padding: 4px 8px; border-left: 3px solid var(--line); color: var(--muted); }
+.hint b { color: var(--fg); font-weight: 600; }
+.hint > div { margin-top: 3px; }
+.hint p { margin: 4px 0; }
+.hint summary { cursor: pointer; margin-top: 4px; }
+.calc { width: auto; margin: 3px 0; font-size: 12px; }
+.calc td { padding: 1px 10px 1px 0; vertical-align: top; }
+.calc td:nth-child(2) { text-align: right; white-space: nowrap; font-family: ui-monospace, Menlo, monospace; color: var(--fg); }
+.calc tr.sum td { border-top: 1px solid var(--line); color: var(--fg); }
+.legend span.link, .sections div.link { cursor: pointer; text-decoration: underline dotted; }
+tr.flash > *, .panel.flash { animation: flash 1.6s; }
+@keyframes flash { 0%, 40% { background: color-mix(in srgb, var(--footer) 35%, transparent); } }
+</style>
+</head>
+<body>
+<script>const D = /*DATA*/null;</script>
+<h1>Parquet Explorer</h1>
+<div class="sub mono">{{TITLE}}</div>
+<div id="facts" class="note"></div>
+
+<h2>1 · The file, byte by byte</h2>
+<div class="note">Every box is one column chunk (width ∝ bytes on disk). Dashed lines: HDFS block boundaries.
+Click a box to see its pages below.</div>
+<div class="legend" id="legend"></div>
+<div class="ruler" id="ruler"></div>
+<div class="bar" id="bar"></div>
+<div class="sections" id="sections"></div>
+
+<h2>2 · Pushdown: what does a query actually read?</h2>
+<div class="panel sim">
+  <div class="note">Projection pushdown: tick the columns of the <code>SELECT</code> (none = all).
+  Predicate pushdown: a filter like <code>country = 'DE' and quantity &gt;= 4</code>. The reader checks the
+  min/max statistics in the footer and skips row groups that cannot contain a match - without reading them.</div>
+  <div class="cols" id="cols"></div>
+  <div class="row">
+    <div><input type="text" id="where" placeholder="WHERE …   e.g. order_ts >= '2025-12-01'"></div>
+    <button id="run">Simulate</button><button id="reset">Reset</button>
+  </div>
+  <div class="examples note" id="examples">Try: </div>
+  <div class="kpis" id="kpis"></div>
+  <div class="note" id="explain"></div>
+</div>
+
+<h2>3 · Row groups and column chunks</h2>
+<div class="note">The same file as nested boxes: row group → column chunk → first values of the chunk.</div>
+<div class="rgs" id="rgs"></div>
+
+<h2>4 · Selected column chunk and its pages</h2>
+<div class="panel" id="detail"><span class="note">Click a column chunk above.</span></div>
+
+<h2>5 · Footer (FileMetaData)</h2>
+<div class="panel" id="footer"></div>
+
+<h2>6 · Statistics in the footer: min / max per row group</h2>
+<div class="note">This table is all a reader needs for predicate pushdown. Red cell = this condition rules the
+row group out, green = it may contain matches.</div>
+<div class="panel scroll"><table class="stats" id="stats"></table></div>
+
+<script>
+const fmt = n => n.toLocaleString("en-US");
+const kb = n => n >= 1048576 ? (n / 1048576).toFixed(2) + " MB" : n >= 1024 ? (n / 1024).toFixed(1) + " KB" : n + " B";
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const col = name => `var(--c${D.columns.indexOf(name) % 10})`;
+const pct = (o, len) => `left:${o / D.size * 100}%;width:${len / D.size * 100}%`;
+const isNum = name => /int|float|double|decimal/.test(D.arrow_types[D.columns.indexOf(name)]);
+let selected = null, readSet = null;
+
+document.getElementById("facts").textContent = `${fmt(D.size)} bytes · ${fmt(D.num_rows)} rows · `
+  + `${D.row_groups.length} row groups · ${D.columns.length} columns · ${D.blocks.length || "no"} HDFS blocks · ${D.created_by}`;
+
+// ---------------------------------------------------------------- 1: byte map
+function segments() {
+  const s = [{kind: "magic", o: 0, len: 4, label: "magic PAR1"}];
+  for (const rg of D.row_groups) for (const c of rg.cols) s.push({kind: "chunk", o: c.o, len: c.len, rg: rg.i, c});
+  s.push({kind: "footer", o: D.footer_offset, len: D.footer_len, label: "footer"});
+  s.push({kind: "magic", o: D.size - 8, len: 4, label: "footer length"});
+  s.push({kind: "magic", o: D.size - 4, len: 4, label: "magic PAR1"});
+  return s;
+}
+function drawBar() {
+  const bar = document.getElementById("bar");
+  bar.innerHTML = "";
+  for (const s of segments()) {
+    const d = document.createElement("div");
+    d.style.cssText = pct(s.o, s.len) + `;background:${s.kind === "chunk" ? col(s.c.name) : `var(--${s.kind})`}`;
+    d.title = s.kind === "chunk" ? `row group ${s.rg} · ${s.c.name} · ${fmt(s.len)} B @ ${fmt(s.o)}`
+      : `${s.label} · ${fmt(s.len)} B @ ${fmt(s.o)}`;
+    if (readSet && !readSet.ranges.some(([o, l]) => o < s.o + s.len && o + l > s.o)) d.classList.add("unread");
+    if (s.kind === "chunk") {
+      if (selected === s.c) d.classList.add("sel");
+      d.onclick = () => select(s.c, s.rg);
+    } else d.onclick = () => jump(s.kind === "footer" ? "footer" : s.label === "footer length" ? "f-len" : "f-magic");
+    bar.appendChild(d);
+  }
+  for (const b of D.blocks.slice(1)) {
+    const d = document.createElement("div");
+    d.className = "blk"; d.style.left = b.offset / D.size * 100 + "%";
+    bar.appendChild(d);
+  }
+  const ruler = document.getElementById("ruler");
+  ruler.innerHTML = "";
+  for (const b of D.blocks) {
+    const d = document.createElement("div");
+    d.style.cssText = pct(b.offset, b.length);
+    d.textContent = b.block; d.title = `${b.block}: bytes ${fmt(b.offset)} … ${fmt(b.offset + b.length)} on ${b.names.join(", ")}`;
+    if (readSet && readSet.blocks.has(b.block)) d.classList.add("touched");
+    ruler.appendChild(d);
+  }
+}
+const sections = document.getElementById("sections");
+for (const rg of D.row_groups) {
+  const d = document.createElement("div");
+  d.style.cssText = pct(rg.o, rg.len); d.textContent = `row group ${rg.i}`;
+  sections.appendChild(d);
+}
+const fs = document.createElement("div");
+fs.style.cssText = pct(D.footer_offset, D.size - D.footer_offset); fs.textContent = "footer";
+fs.className = "link"; fs.onclick = () => jump("footer");
+sections.appendChild(fs);
+document.getElementById("legend").innerHTML =
+  `<span class="link" style="--c:var(--magic)" onclick="jump('f-magic')" title="jump to the info">magic / footer length</span>`
+  + D.columns.map(c => `<span style="--c:${col(c)}">${esc(c)}</span>`).join("")
+  + `<span class="link" style="--c:var(--footer)" onclick="jump('footer')" title="jump to the info">footer</span>`;
+function jump(id) {
+  const el = document.getElementById(id);
+  el.scrollIntoView({behavior: "smooth", block: "center"});
+  el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");
+}
+
+// ---------------------------------------------------------------- 3: row group cards
+function drawCards() {
+  const rgs = document.getElementById("rgs");
+  rgs.innerHTML = "";
+  for (const rg of D.row_groups) {
+    const card = document.createElement("div");
+    card.className = "rgcard" + (readSet && !readSet.rgs.has(rg.i) ? " unread" : "");
+    card.innerHTML = `<h3>Row group ${rg.i}<br><span class="note">${fmt(rg.rows)} rows · ${kb(rg.len)}</span></h3>`;
+    for (const c of rg.cols) {
+      const d = document.createElement("div");
+      const read = !readSet || (readSet.rgs.has(rg.i) && readSet.cols.has(c.name));
+      d.className = "chunk" + (read ? "" : " unread") + (selected === c ? " sel" : "");
+      d.style.setProperty("--c", col(c.name));
+      d.innerHTML = `<div class="n"><b>${esc(c.name)}</b><span>${kb(c.len)}</span></div>`
+        + `<div class="pills">${c.sample.map(v => `<span>${esc(v ?? "null")}</span>`).join("")}</div>`;
+      d.onclick = () => select(c, rg.i);
+      card.appendChild(d);
+    }
+    rgs.appendChild(card);
+  }
+}
+
+// ---------------------------------------------------------------- 4: chunk detail with pages
+function pageBar(p, c) {
+  const total = p.header + p.compressed;
+  let parts = `<div class="ph" style="flex:${Math.max(p.header, total * .04)}" title="page header (Thrift) ${p.header} B">H</div>`;
+  if (p.def_bytes !== undefined) {
+    const scale = p.compressed / (p.rep_bytes + p.def_bytes + p.value_bytes);
+    if (p.rep_bytes) parts += `<div class="rl" style="flex:${Math.max(p.rep_bytes * scale, total * .04)}" title="repetition levels">rep ${fmt(p.rep_bytes)}</div>`;
+    if (p.def_bytes) parts += `<div class="dl" style="flex:${Math.max(p.def_bytes * scale, total * .04)}" title="definition levels (uncompressed size)">def ${fmt(p.def_bytes)}</div>`;
+    parts += `<div class="vl" style="flex:${p.value_bytes * scale}" title="values (uncompressed size)">values ${fmt(p.value_bytes)} B</div>`;
+  } else {
+    parts += `<div class="dp" style="flex:${p.compressed}">${p.type === "DICTIONARY_PAGE" ? "dictionary" : "data"} ${fmt(p.compressed)} B</div>`;
+  }
+  return `<div class="page" style="--c:${col(c.name)}">${parts}</div>`;
+}
+
+const cell = v => `<td title="${esc(v ?? "null")}">${esc(v ?? "null")}</td>`;
+function strip(rows, runRow = "") {   // rows: [[label, [values], nullMask?]]
+  return `<div class="strip"><table>${runRow}${rows.map(([label, vals, nulls]) => `<tr><th>${label}</th>`
+    + vals.map((v, j) => nulls && nulls[j] ? `<td class="null">${esc(v)}</td>` : cell(v)).join("") + `</tr>`).join("")}</table></div>`;
+}
+const BYTES = {INT32: 4, INT64: 8, FLOAT: 4, DOUBLE: 8};
+function dictWhy(c, bw) {
+  const d = c.pages[0] && c.pages[0].type === "DICTIONARY_PAGE" ? c.pages[0].values : null;
+  return d == null ? `The writer chose ${bw} bit for the indices.`
+    : `The dictionary page has ${fmt(d)} entries, so the indices are 0 … ${fmt(d - 1)}. ${fmt(d - 1)} needs ${bw} bit
+       (2<sup>${bw}</sup> = ${fmt(2 ** bw)} ≥ ${fmt(d)}${bw > 1 ? `, 2<sup>${bw - 1}</sup> = ${fmt(2 ** (bw - 1))} would be too few` : ""}).`;
+}
+const share = x => x >= 1 ? x.toFixed(1) : x.toPrecision(2);
+const runLabel = x => x[0] === "RLE" ? `RLE ${fmt(x[1])}× ${x[2]}` : `bit-packed ${fmt(x[1])}`;
+function runs(r, what) {
+  if (!r) return "";
+  const shown = r.runs.slice(0, 8).map(x => `<b class="${x[0] === "RLE" ? "rle" : "bp"}">${runLabel(x)}</b>`).join(" · ");
+  const blocks = k => `${fmt(k)} block${k === 1 ? "" : "s"}`;
+  return `<div class="runs">${fmt(r.num_runs)} run${r.num_runs === 1 ? "" : "s"} = ${blocks(r.num_runs)}
+    (${blocks(r.rle_runs)} RLE, ${blocks(r.num_runs - r.rle_runs)} bit-packed): ${shown}${r.num_runs > 8 ? " · …" : ""}</div>`
+    + runsExplained(r)
+    + (r.num_runs === 1 && r.rle_runs === 1 ? `<div class="d">One RLE run stores ${what} in a few bytes.</div>` : "")
+    + stored(r);
+}
+// the runs as they are stored, like "0 1 2 [3, 3] 1 0": an RLE run is "value, count", then the next run
+// starts count entries later; a bit-packed run lists its values one by one
+function stored(r) {
+  let start = 0, h = "";
+  const show = r.runs.slice(0, 10);
+  show.forEach((x, id) => {
+    const end = start + x[1] - 1, range = `entries ${fmt(start)}${x[1] > 1 ? ` … ${fmt(end)}` : ""}`;
+    if (x[0] === "RLE") {
+      h += `<div class="box rle" title="RLE run: value ${x[2]}, repeated ${fmt(x[1])} times"><b>${x[2]}, ${fmt(x[1])}</b>
+        <small>value, count</small><small>${range}</small></div>`;
+    } else {
+      const vals = x[4] || r.first.slice(start, Math.min(start + x[1], start + 8));
+      h += `<div class="box" title="bit-packed run: ${fmt(x[1])} values, ${r.bit_width} bit each"><b>${vals.length
+        ? vals.join(" ") + (x[1] > vals.length ? " …" : "") : "…"}</b><small>bit-packed, ${fmt(x[1])} values</small><small>${range}</small></div>`;
+    }
+    h += id < show.length - 1 ? `<span class="arrow">→</span>` : "";
+    start = end + 1;
+  });
+  return `<div class="d" style="margin-top:5px">As stored (like the right box of the dictionary/RLE picture):
+    an <b>RLE run</b> is written as <code>value, count</code> - the number after the comma is how often the value
+    repeats, so the next run starts <i>count</i> entries later. A <b>bit-packed run</b> stores every value itself
+    (${r.bit_width} bit each).</div><div class="stored">${h}${r.num_runs > show.length ? `<span class="arrow">→ … ${fmt(r.num_runs - show.length)} more runs</span>` : ""}</div>`;
+}
+// what the numbers in "40 runs (0 RLE, 40 bit-packed)" mean
+function runsExplained(r) {
+  const bp = r.num_runs - r.rle_runs, n = r.values;
+  let t = `The ${fmt(n)} values are stored as ${fmt(r.num_runs)} consecutive ${r.num_runs === 1 ? "piece (run)" : "pieces (runs)"}, each with its
+    own header: <b>${fmt(r.rle_runs)} RLE</b> run${r.rle_runs === 1 ? "" : "s"} (a stretch of ≥ 8 equal values, stored as
+    value + count) and <b>${fmt(bp)} bit-packed</b> run${bp === 1 ? "" : "s"} (every value stored itself, at most 504 per run).`;
+  if (bp) t += `<br>Read "<b>${fmt(bp)} bit-packed</b>" as <b>${fmt(bp)} block${bp === 1 ? "" : "s"} stored bit-packed</b>
+    - together they hold ${fmt(n - r.rle_values)} values, ${r.bit_width} bit each. It is not ${fmt(bp)} bits
+    and not ${fmt(bp)} values: <b>runs</b> count blocks, <b>bit width</b> is the size of one value.`;
+  if (bp && !r.rle_runs)
+    t += ` With no RLE run, the count of bit-packed runs only follows from the number of values:
+      ⌈${fmt(n)} / 504⌉ = ${fmt(Math.ceil(n / 504))}${n % 504 && n > 504 ? ` (${fmt(Math.floor(n / 504))} × 504 + ${fmt(n % 504)})` : ""}.`;
+  else if (bp)
+    t += ` RLE runs cover ${fmt(r.rle_values)} values; the ${fmt(n - r.rle_values)} values in between are bit-packed,
+      split wherever an RLE run interrupts them or 504 values are reached.`;
+  return `<div class="d">${t}</div>`;
+}
+// the run row above a strip: one colored cell per run, spanning the entries it holds (cols[j] = sample index or null)
+function runRow(r, cols) {
+  if (!r || !r.first_run) return "";
+  let h = "", j = 0, last = null;
+  while (j < cols.length) {
+    const id = cols[j] == null ? null : r.first_run[cols[j]];
+    let n = 1;
+    while (j + n < cols.length && cols[j + n] != null && r.first_run[cols[j + n]] === id && id != null) n++;
+    if (id == null) h += `<td></td>`;
+    else {
+      const x = r.runs[id];
+      h += `<td colspan="${n}" class="run ${x[0] === "RLE" ? "rle" : "bp"}${id % 2 ? " odd" : ""}"
+        title="run ${id}: ${runLabel(x)} values, ${x[3]} B">${id === last ? `… run ${id}` : `run ${id}: ${runLabel(x)} · ${x[3]} B`}</td>`;
+      last = id;
+    }
+    j += n;
+  }
+  return `<tr><th>run</th>${h}</tr>`;
+}
+// what bit-packing and RLE save in this section; plainBytes = bytes per value without encoding (if known)
+let explained = false;   // the background text once per page
+// How the bytes of one RLE/bit-packed section are made up, line by line, with the arithmetic.
+// prefix = [label, bytes, note] in front of the runs, why = why this bit width, plain = [label, bytes per value]
+function hint(r, prefix, why, plain) {
+  if (!r || !r.values) return "";
+  const general = !explained && r.num_runs > r.rle_runs;   // explain where bit-packed runs occur
+  explained = explained || general;
+  const bw = r.bit_width, n = r.values, width = Math.max(1, Math.ceil(bw / 8));
+  const packedN = n - r.rle_values, rleValueBytes = r.rle_runs * width;
+  const packedBytes = r.bytes - r.header_bytes - rleValueBytes, total = prefix[1] + r.bytes;
+  const tight = Math.ceil(packedN * bw / 8), pad = packedBytes - tight;
+  const b = total * 8 / n, bits = b >= .1 ? b.toFixed(2) : b.toPrecision(2);
+  const row = (what, bytes, how) => `<tr><td>${what}</td><td>${bytes}</td><td>${how}</td></tr>`;
+  let h = `<div class="hint"><b>How the ${fmt(total)} B of this section are made up</b><table class="calc">`
+    + row(prefix[0], `${fmt(prefix[1])} B`, prefix[2])
+    + row("run headers", `${fmt(r.header_bytes)} B`, `${fmt(r.num_runs)} run${r.num_runs === 1 ? "" : "s"}, each starts with a
+        small header (varint, usually 1 B) that says "RLE or bit-packed" and how many values follow`)
+    + row("bit-packed values", `${fmt(packedBytes)} B`, packedN
+        ? `${fmt(packedN)} values × ${bw} bit = ${fmt(packedN * bw)} bit = ${fmt(tight)} B${pad > 0 ? ` + ${fmt(pad)} B padding
+          (a run is filled up to a multiple of 8 values)` : ""}`
+        : "none - every value sits in an RLE run")
+    + row("RLE values", `${fmt(rleValueBytes)} B`, r.rle_runs
+        ? `${fmt(r.rle_runs)} RLE run${r.rle_runs === 1 ? "" : "s"} × ${width} B (the repeated value, stored once) -
+          they cover ${fmt(r.rle_values)} of the ${fmt(n)} values (${(r.rle_values / n * 100).toFixed(0)} %)`
+        : "none - no value repeats 8 or more times in a row, so the writer never chose RLE")
+    + `<tr class="sum"><td>= total</td><td>${fmt(total)} B</td><td>${fmt(total * 8)} bit / ${fmt(n)} values =
+        <b>${bits} bit per value</b></td></tr></table>`;
+  h += `<div><b>Why ${bw} bit?</b> ${why}</div>`;
+  if (plain) h += `<div><b>Compared with</b> ${plain[0]}: ${fmt(n)} × ${plain[1]} B = ${fmt(n * plain[1])} B →
+    this section needs ${share(total / (n * plain[1]) * 100)} % of that.</div>`;
+  if (general) h += `<details><summary>Background: bit-packing, RLE and why a run holds at most 504 values</summary>
+    <p><b>Bit-packing</b> stores every value with exactly <i>bit width</i> bits, the bits of the largest possible
+    number. The saving depends on the <b>value range</b>, not on the values: 2 possible values → 1 bit, ≤ 4 → 2,
+    ≤ 16 → 4, ≤ 32 → 5, ≤ 128 → 7, ≤ 1,024 → 10 bit. So it never goes below 1 bit per value.</p>
+    <p><b>RLE</b> stores "value, count" once for a stretch of equal values, whatever its length. The writer uses it
+    only for 8 or more equal values in a row - for shorter repeats bit-packing is cheaper. It is the only way below
+    1 bit per value, and it needs sorted or clustered data.</p>
+    <p><b>Why 504?</b> A bit-packed run header is the varint <code>(groups &lt;&lt; 1) | 1</code>. One varint byte has
+    7 usable bits; the lowest says "bit-packed", 6 bits remain for the number of groups of 8: at most 63
+    (<code>63 &lt;&lt; 1 | 1 = 127</code>, the largest 1-byte varint). 63 × 8 = <b>504 values</b>. The writer reserves
+    this single header byte before it knows how long the run gets, so it closes a run after 63 groups (the format
+    itself would allow longer runs). A full run costs 1 + 63 × ${bw} = ${fmt(1 + 63 * bw)} B here, so the header is
+    ${(100 / (1 + 63 * bw)).toFixed(2)} %. ${r.rle_runs ? `RLE runs interrupt the bit-packed stretches, so the number
+    of runs here also depends on the data.` : `Without RLE runs the number of runs is simply ⌈values / 504⌉:
+    ⌈${fmt(n)} / 504⌉ = ${fmt(Math.ceil(n / 504))}${n % 504 ? ` (${fmt(Math.floor(n / 504))} full runs of 504 + one run with the remaining ${fmt(n % 504)})` : ""}.`}</p></details>`;
+  return h + `</div>`;
+}
+function sec(cls, title, size, body) {
+  return `<div class="sec ${cls}"><div class="h">${title}<span>${size}</span></div>${body}</div>`;
+}
+
+function pageBox(p, i, c, prev) {
+  explained = false;
+  const dict = p.type === "DICTIONARY_PAGE", m = c.meta || {};
+  const from = !prev ? (dict ? "dictionary_page_offset" : "data_page_offset")
+    : `${fmt(prev.o)} + ${prev.header} + ${fmt(prev.compressed)}${p.o === m.data_page_offset ? " = data_page_offset" : ""}`;
+  let h = `<details class="pg"${i < 3 ? " open" : ""}><summary><b>Page ${i}</b> · ${p.type} · @ ${fmt(p.o)} (= ${from}) ·
+    ${fmt(p.header + p.compressed)} B on disk · ${fmt(p.values)} values · ${p.encoding}</summary>`;
+  h += pageBar(p, c);
+  h += sec("ph", "Page header (ThriftCompactProtocol)", `${fmt(p.header)} B`,
+    `<div class="fields">${(p.fields || []).map(([k, v]) => `<span>${esc(k)}</span><span>${esc(v)}</span>`).join("")}
+     ${p.min !== undefined ? `<span>data_page_header.statistics.min_value</span><span>${esc(p.min)}</span>
+     <span>data_page_header.statistics.max_value</span><span>${esc(p.max)}</span>
+     <span>data_page_header.statistics.null_count</span><span>${p.nulls ?? "-"}</span>` : ""}</div>`);
+  if (dict) {
+    h += sec("rl absent", "Repetition levels", "-", `<div class="d">A dictionary page has no levels.</div>`);
+    h += sec("dl absent", "Definition levels", "-", `<div class="d">A dictionary page has no levels.</div>`);
+    const d = p.dict || [];
+    h += sec("vl", "values: the dictionary", `${fmt(p.compressed)} B on disk`,
+      `<div class="d">${fmt(p.values)} distinct values of this column chunk, ${p.encoding} encoded, each stored once.
+       The data pages only store their position (index).</div>`
+      + strip([["index", d.map((_, j) => j)], ["value", d]]) + (p.values > d.length ? `<div class="d">… ${fmt(p.values - d.length)} more</div>` : ""));
+    return h + `</details>`;
+  }
+  if (p.def_bytes === undefined) {
+    h += sec("vl", "data", `${fmt(p.compressed)} B`, `<div class="d">Not decoded (codec or page version unknown).</div>`);
+    return h + `</details>`;
+  }
+  const L = D.levels && D.levels[c.name], rl = p.rep_levels, dl = p.def_levels;
+  const legend = (arr, label) => `<div class="fields">${arr.map((m, k) => `<span>${label} ${k}</span><span>${esc(m)}</span>`).join("")}</div>`;
+  h += p.max_rep ? sec("rl", "Repetition levels", `${fmt(p.rep_bytes)} B`,
+      `<div class="d">max repetition level ${p.max_rep}, ${p.rep_encoding} (4 B length + runs), ${p.max_rep.toString(2).length} bit
+       per level: at which list a new entry starts.</div>` + (L ? legend(L.rep, "rep") : "") + runs(rl, "all levels")
+      + (rl ? strip([["entry", rl.first.map((_, j) => j)], ["rep level", rl.first]], runRow(rl, rl.first.map((_, j) => j))) : "")
+      + hint(rl, ["length prefix", 4, "4 B: how many bytes of runs follow, so the reader can jump to the next section"],
+          `The levels are 0 … ${p.max_rep}, and ${p.max_rep} needs ${p.max_rep.toString(2).length} bit.`, ["one byte per level", 1]))
+    : sec("rl absent", "Repetition levels", "0 B", `<div class="d">Not stored: flat column (max repetition level 0).
+      Only repeated (list) columns need them.</div>`);
+  h += p.max_def ? sec("dl", "Definition levels", `${fmt(p.def_bytes)} B`,
+      `<div class="d">max definition level ${p.max_def}, ${p.def_encoding} (4 B length + runs), ${p.max_def.toString(2).length} bit
+       per level: ${L && p.max_rep ? "how far down the path the entry is defined" : `1 = value present, 0 = null`}${p.nulls !== undefined ? ` · null_count ${fmt(p.nulls)}` : ""}.</div>`
+      + (L && p.max_rep ? legend(L.def, "def") : "")
+      + runs(dl, `${fmt(p.values)} × "present"`)
+      + (dl ? strip([["entry", dl.first.map((_, j) => j)], ["def level", dl.first, dl.first.map(l => l < p.max_def)]],
+          runRow(dl, dl.first.map((_, j) => j))) : "")
+      + hint(dl, ["length prefix", 4, "4 B: how many bytes of runs follow, so the reader can jump to the next section"],
+          `The levels are 0 … ${p.max_def}, and ${p.max_def} needs ${p.max_def.toString(2).length} bit.`, ["one byte per level", 1]))
+    : sec("dl absent", "Definition levels", "0 B", `<div class="d">Not stored: required column (no nulls possible).</div>`);
+
+  // values, aligned with the level entries: only an entry with def level = max has a value
+  const levels = dl ? dl.first : null;
+  const short = l => !L ? "null" : /empty/.test(L.def[l]) ? "[ ]" : "null";
+  const align = vals => {
+    if (!levels) return {vals, nulls: null, rows: vals.map((_, j) => j), ks: vals.map((_, j) => j)};
+    const out = [], nulls = [], rows = [], ks = [];
+    let k = 0, row = -1;
+    levels.forEach((l, j) => {
+      row += !rl || rl.first[j] === 0 ? 1 : 0;
+      rows.push(rl && rl.first[j] !== 0 ? `(${row})` : row);
+      if (l < p.max_def) { out.push(short(l)); nulls.push(true); ks.push(null); }
+      else { ks.push(k < vals.length ? k : null); out.push(vals[k++]); nulls.push(false); }
+    });
+    return {vals: out, nulls, rows, ks};
+  };
+  const lv = rl ? [["rep level", rl.first], ["def level", levels, levels.map(l => l < p.max_def)]] : [];
+  let body, title = `values (${p.encoding})`;
+  if (p.indices) {
+    const ix = p.indices, a = align(ix.first), m = align(ix.mapped);
+    body = `<div class="d">1 byte bit width = <b>${p.bit_width}</b>, then RLE/bit-packed runs of indices into the
+      dictionary page (${p.bit_width} bit per value instead of the value itself).</div>` + runs(ix, "all indices")
+      + strip([["row", a.rows], ...lv, ["index", a.vals, a.nulls], ["→ value", m.vals, m.nulls]], runRow(ix, a.ks))
+      + hint(ix, ["bit width", 1, `1 B: every index below has ${p.bit_width} bit`], dictWhy(c, p.bit_width),
+          BYTES[c.physical] ? [`PLAIN ${c.physical} (${BYTES[c.physical]} B per value)`, BYTES[c.physical]] : null)
+      + `<div class="d">Plus the dictionary page once per column chunk.</div>`;
+  } else if (p.plain) {
+    const a = align(p.plain);
+    body = `<div class="d">PLAIN: the values one after another${c.physical === "BYTE_ARRAY" ? ", each as [4 B length][bytes]" : `, ${c.physical} little endian`}.
+      Nulls are not stored here - only in the definition levels.</div>` + strip([["row", a.rows], ...lv, ["value", a.vals, a.nulls]]);
+  } else if (p.delta) {
+    const d = p.delta;
+    body = `<div class="d">DELTA_BINARY_PACKED: the first value, then only the differences to the previous value,
+      in blocks of ${d.block_size} values (${d.miniblocks} miniblocks). Per block: the smallest delta, and per miniblock the
+      bits each (delta − min delta) needs.</div><div class="fields">
+      <span>block size / miniblocks</span><span>${d.block_size} / ${d.miniblocks}</span>
+      <span>total values</span><span>${fmt(d.total)}</span>
+      <span>first value</span><span>${esc(d.first_value)}${d.first_value_as ? ` (= ${esc(d.first_value_as)})` : ""}</span>
+      ${d.min_delta !== undefined ? `<span>block 1: min delta</span><span>${fmt(d.min_delta)}</span>
+      <span>block 1: bit widths</span><span>${d.bit_widths.join(", ")}${d.bit_widths.every(b => b === 0)
+        ? " → every delta is exactly the min delta: 0 bits per value" : " bits per value"}</span>` : ""}</div>`;
+  } else {
+    body = `<div class="d">Not decoded here; first bytes:</div><div class="runs">${esc(p.hex || "")}</div>`;
+  }
+  h += sec("vl", title, `${fmt(p.value_bytes)} B`, body);
+  return h + `</details>`;
+}
+
+function select(c, rgi) {
+  selected = c;
+  const pages = c.pages || [];
+  const rows = [
+    ["column", `<b>${esc(c.name)}</b> (physical type ${c.physical}, ${D.arrow_types[D.columns.indexOf(c.name)]})`],
+    ["row group", rgi], ["bytes", `${fmt(c.o)} … ${fmt(c.o + c.len)} = ${fmt(c.len)} B on disk, ${fmt(c.uncompressed)} B uncompressed (×${(c.uncompressed / c.len).toFixed(1)})`],
+    ["codec", c.codec], ["encodings", c.encodings.join(", ")], ["values", fmt(c.values)],
+    ["statistics", `min = <code>${esc(c.min)}</code>, max = <code>${esc(c.max)}</code>, nulls = ${c.nulls}`],
+  ];
+  let h = `<table>${rows.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join("")}</table>`;
+  const recs = D.row_groups[rgi].records, top = c.name.split(".")[0];
+  if (recs && recs[top]) {
+    h += `<p class="note"><b>The first rows of <code>${esc(top)}</code> in row group ${rgi}</b> - this is what the
+      levels below encode. Parquet stores only the leaf <code>${esc(c.name)}</code>: one entry per list element
+      (or one per empty/null list), and the repetition and definition levels to rebuild the nesting.</p>`
+      + `<div class="fields">${recs[top].map((v, j) => `<span>row ${j}</span><span>${esc(v)}</span>`).join("")}</div>`;
+  }
+  h += `<p class="note">The column chunk as nested boxes, as in the Parquet specification: chunk → pages →
+    page header (Thrift) + data. In a data page (v1) the data is [repetition levels][definition levels][values].
+    The content below is decoded from the bytes of the file.</p>`;
+  const m = c.meta || {};
+  h += `<div class="sec" style="--x:var(--footer)"><div class="h">Footer → this chunk: ColumnMetaData (row group ${rgi})
+      <span>the arrow from the footer to the pages</span></div><div class="fields">
+      <span>dictionary_page_offset</span><span>${m.dictionary_page_offset == null ? "- (no dictionary page)" : fmt(m.dictionary_page_offset)}</span>
+      <span>data_page_offset</span><span>${fmt(m.data_page_offset)}</span>
+      <span>total_compressed_size</span><span>${fmt(m.total_compressed_size)} B</span>
+      <span>num_values</span><span>${fmt(m.num_values)}</span>
+      <span>number of pages</span><span>not stored${m.offset_index ? " here (but an OffsetIndex exists)" : ""}</span></div>
+      <div class="d">The reader starts at the dictionary page (if any), else at the first data page. Every page header
+      contains <code>compressed_page_size</code>, so the next page starts at offset + header + compressed_page_size.
+      It stops when start + total_compressed_size is reached. That is how it finds all pages without a page count.</div></div>`;
+  h += `<div class="colbox" style="--c:${col(c.name)}"><div class="t">Column chunk ${esc(c.name)} · row group ${rgi}
+    · ${pages.length} page${pages.length === 1 ? "" : "s"}</div>`;
+  pages.forEach((p, i) => { h += pageBox(p, i, c, i ? pages[i - 1] : null); });
+  const end = c.o + c.len;
+  h += `<div class="note mono">end: ${pages.length ? `${fmt(pages.at(-1).o)} + ${pages.at(-1).header} + ${fmt(pages.at(-1).compressed)} = ` : ""}${fmt(end)}
+    = start + total_compressed_size → no more pages (${pages.length} found)</div>`;
+  h += `</div><p class="note">Byte sizes inside a page are before compression (${c.codec}); the bars are scaled
+    to the bytes on disk.</p>`;
+  document.getElementById("detail").innerHTML = h;
+  drawBar(); drawCards();
+}
+
+// ---------------------------------------------------------------- 5: footer
+document.getElementById("footer").innerHTML = `<table>
+  <tr id="f-magic"><th>magic</th><td>bytes 0 … 3 and ${fmt(D.size - 4)} … ${fmt(D.size - 1)}: "PAR1" - marks the file as
+    Parquet at both ends; a reader checks it before trusting anything else.</td></tr>
+  <tr id="f-len"><th>footer length</th><td>bytes ${fmt(D.size - 8)} … ${fmt(D.size - 5)}: ${fmt(D.footer_len)} (4 B, little endian).
+    The reader reads the last 8 bytes first, then: footer start = file size − 8 − footer length =
+    ${fmt(D.size)} − 8 − ${fmt(D.footer_len)} = ${fmt(D.footer_offset)}.</td></tr>
+  <tr><th>position</th><td>${fmt(D.footer_offset)} … ${fmt(D.size - 8)} = ${fmt(D.footer_len)} B, then 4 B length + 4 B "PAR1"</td></tr>
+  <tr><th>format version</th><td>${D.format_version}</td></tr>
+  <tr><th>created by</th><td>${esc(D.created_by)}</td></tr>
+  <tr><th>rows</th><td>${fmt(D.num_rows)} in ${D.row_groups.length} row groups</td></tr>
+  <tr><th>key/value</th><td>${Object.keys(D.kv).map(esc).join(", ") || "-"}</td></tr>
+  <tr><th>schema</th><td><pre class="mono" style="margin:0;white-space:pre-wrap">${esc(D.schema)}</pre></td></tr>
+</table><p class="note">A reader opens the file from the end: last 8 bytes → footer length → footer →
+schema, row groups, column chunk offsets and statistics. Only then does it decide which bytes to read.</p>`;
+
+// ---------------------------------------------------------------- pushdown simulation
+const colsBox = document.getElementById("cols");
+colsBox.innerHTML = D.columns.map(c => `<label><input type="checkbox" value="${esc(c)}"> <span style="color:${col(c)}">■</span> ${esc(c)}</label>`).join("");
+const EXAMPLES = [
+  [["unit_price"], "order_ts >= '2025-12-01'"],
+  [["unit_price", "quantity"], "country = 'DE'"],
+  [["customer_email"], "order_id = 123456"],
+  [[], "status = 'refunded'"],
+];
+const ex = document.getElementById("examples");
+for (const [cols, where] of EXAMPLES) {
+  const b = document.createElement("button");
+  b.textContent = (cols.length ? "SELECT " + cols.join(", ") : "SELECT *") + " WHERE " + where;
+  b.onclick = () => {
+    colsBox.querySelectorAll("input").forEach(i => i.checked = cols.includes(i.value));
+    document.getElementById("where").value = where; simulate();
+  };
+  ex.appendChild(b);
+}
+
+function parse(where) {
+  if (!where.trim()) return [];
+  return where.split(/\s+and\s+/i).map(part => {
+    const m = part.trim().match(/^(\w+)\s*(==|=|!=|<=|>=|<|>)\s*(.+)$/);
+    if (!m || !D.columns.includes(m[1])) throw new Error(`cannot read "${part.trim()}" - use: column op value`);
+    let v = m[3].trim().replace(/^['"]|['"]$/g, "");
+    return {col: m[1], op: m[2] === "==" ? "=" : m[2], v: isNum(m[1]) ? Number(v) : v};
+  });
+}
+function mayMatch(c, cond) {
+  if (c.min === null || c.min === undefined) return true;        // no statistics: must read
+  const {op, v} = cond, lo = c.min, hi = c.max;
+  return op === "=" ? lo <= v && v <= hi : op === "!=" ? !(lo === v && hi === v)
+    : op === "<" ? lo < v : op === "<=" ? lo <= v : op === ">" ? hi > v : hi >= v;
+}
+function simulate() {
+  let conds;
+  try { conds = parse(document.getElementById("where").value); }
+  catch (e) { document.getElementById("explain").textContent = e.message; return; }
+  const picked = [...colsBox.querySelectorAll("input:checked")].map(i => i.value);
+  const proj = picked.length ? picked : D.columns;
+  const cols = new Set([...proj, ...conds.map(c => c.col)]);
+  const rgs = new Set(), verdict = {};
+  for (const rg of D.row_groups) {
+    verdict[rg.i] = conds.map(cd => mayMatch(rg.cols.find(c => c.name === cd.col), cd));
+    if (verdict[rg.i].every(Boolean)) rgs.add(rg.i);
+  }
+  const ranges = [[D.footer_offset, D.size - D.footer_offset]];
+  for (const rg of D.row_groups) if (rgs.has(rg.i)) for (const c of rg.cols) if (cols.has(c.name)) ranges.push([c.o, c.len]);
+  const blocks = new Set(D.blocks.filter(b => ranges.some(([o, l]) => o < b.offset + b.length && o + l > b.offset)).map(b => b.block));
+  const bytes = ranges.reduce((s, [, l]) => s + l, 0);
+  readSet = {rgs, cols, ranges, blocks, conds, verdict};
+  const nChunks = ranges.length - 1, allChunks = D.row_groups.length * D.columns.length;
+  document.getElementById("kpis").innerHTML = [
+    [`${rgs.size} / ${D.row_groups.length}`, "row groups read (predicate pushdown)"],
+    [`${cols.size} / ${D.columns.length}`, "columns read (projection pushdown)"],
+    [`${nChunks} / ${allChunks}`, "column chunks read"],
+    [`${kb(bytes)}`, `of ${kb(D.size)} read (${(bytes / D.size * 100).toFixed(1)} %)`],
+    D.blocks.length ? [`${blocks.size} / ${D.blocks.length}`, "HDFS blocks touched"] : null,
+  ].filter(Boolean).map(([b, s]) => `<div class="kpi"><b>${b}</b><span>${s}</span></div>`).join("");
+  const skipped = D.row_groups.filter(rg => !rgs.has(rg.i)).map(rg => rg.i);
+  document.getElementById("explain").innerHTML = (conds.length
+    ? (skipped.length ? `Skipped row groups ${skipped.join(", ")}: their min/max range cannot contain a match. `
+      : `No row group can be skipped: in every row group, min ≤ value ≤ max - the values are spread over the whole file. Sorting helps (see step 5 of the demo). `)
+    : "No filter: every row group must be read. ")
+    + `Read = footer + the chunks of the needed columns (filter columns are read too). `
+    + `The real reader (pyarrow) additionally reads the last 64 KB speculatively to get the footer in one request.`;
+  drawStats(); drawBar(); drawCards();
+}
+document.getElementById("run").onclick = simulate;
+document.getElementById("where").addEventListener("keydown", e => { if (e.key === "Enter") simulate(); });
+colsBox.addEventListener("change", () => readSet && simulate());
+document.getElementById("reset").onclick = () => {
+  readSet = null; document.getElementById("where").value = "";
+  colsBox.querySelectorAll("input").forEach(i => i.checked = false);
+  document.getElementById("kpis").innerHTML = ""; document.getElementById("explain").innerHTML = "";
+  drawStats(); drawBar(); drawCards();
+};
+
+// ---------------------------------------------------------------- 6: statistics matrix
+function drawStats() {
+  const t = document.getElementById("stats");
+  let h = `<tr><th>row group</th><th>rows</th>${D.columns.map(c => `<th style="color:${col(c)}">${esc(c)}</th>`).join("")}</tr>`;
+  for (const rg of D.row_groups) {
+    const pruned = readSet && !readSet.rgs.has(rg.i);
+    h += `<tr class="${pruned ? "pruned" : ""}"><td>${rg.i}</td><td>${fmt(rg.rows)}</td>`;
+    for (const c of rg.cols) {
+      let cls = "";
+      if (readSet) {
+        const idx = readSet.conds.map((cd, k) => cd.col === c.name ? k : -1).filter(k => k >= 0);
+        if (idx.length) cls = idx.every(k => readSet.verdict[rg.i][k]) ? "match" : "nomatch";
+      }
+      h += `<td class="${cls}" title="nulls: ${c.nulls}">${esc(c.min)}<br>${esc(c.max)}</td>`;
+    }
+    h += "</tr>";
+  }
+  t.innerHTML = h;
+}
+
+drawBar(); drawCards(); drawStats();
+</script>
+</body>
+</html>

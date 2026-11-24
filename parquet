@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Launcher for the Parquet hands-on (Python + pyarrow). EduDFS and HttpFS must be running first:
+#   ./hdfs minicluster 3   and   ./hdfs httpfs   (each in its own terminal)
+#   ./parquet setup                      create .venv/ and install pyarrow (once)
+#   ./parquet demo [step|list]           guided tour: layout, projection/predicate pushdown, ORDER BY, partitioning, encodings
+#   ./parquet view [options] -f <path>   look inside a Parquet file (--pages, -m, --html out.html)
+#   ./parquet nested [--html out.html]   nested data (lists, structs): repetition and definition levels in the pages
+#   ./parquet query <path> [options]     query with pushdown and an I/O report (--columns, --where, --explain, --no-pushdown)
+#   ./parquet web [port]                 web UI: time queries on CSV vs. Parquet setups, find the sweet spots
+#   ./parquet bench list|run ...         the same benchmark on the command line
+#   ./parquet python                     Python with pyarrow and the demo modules (edudfs_fs, dataset, ...)
+set -e
+cd "$(dirname "$0")"
+VENV=.venv
+PY="$VENV/bin/python"
+
+setup() {
+  python3 -m venv "$VENV"
+  "$VENV/bin/pip" install -q -r src/main/python/requirements.txt
+  "$PY" -c 'import pyarrow; print("pyarrow", pyarrow.__version__, "installed in .venv/")'
+}
+
+cmd="$1"; shift || true
+[ "$cmd" = setup ] && { setup; exit; }
+[ -x "$PY" ] || { echo "First run: ./parquet setup"; exit 1; }
+export PYTHONPATH="$PWD/src/main/python${PYTHONPATH:+:$PYTHONPATH}"
+case "$cmd" in
+  demo)   exec "$PY" src/main/python/demo.py "$@" ;;
+  view)   exec "$PY" src/main/python/explorer.py "$@" ;;
+  nested) exec "$PY" src/main/python/nested.py "$@" ;;
+  query)  exec "$PY" src/main/python/query.py "$@" ;;
+  bench)  exec "$PY" src/main/python/bench.py "$@" ;;
+  web)    exec "$PY" src/main/python/web.py "$@" ;;
+  python) exec "$PY" "$@" ;;
+  *)      sed -n '2,11p' "$0"; exit 1 ;;
+esac

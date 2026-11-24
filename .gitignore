@@ -3,3 +3,6 @@ target/
 demo-data/
 data/
 .DS_Store
+.venv/
+__pycache__/
+parquet*.html

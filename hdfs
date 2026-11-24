@@ -6,6 +6,7 @@
 #   ./hdfs namenode                      NameNode as a separate process
 #   ./hdfs datanode <root> <xfer> <ipc>  DataNode as a separate process (root = its "machine")
 #   ./hdfs dfs -ls / ...                 shell (see ./hdfs dfs)
+#   ./hdfs httpfs [port]                 WebHDFS REST gateway on port 14000 (for Python/pyarrow, curl)
 #   ./hdfs test                          all tests (Maven + JUnit 5)
 set -e
 cd "$(dirname "$0")"
@@ -27,5 +28,6 @@ case "$cmd" in
   datanode)    exec java $JAVA_OPTS -cp "$OUT" edudfs.server.datanode.DataNode "$@" ;;
   test)        exec mvn -q test "$@" ;;
   dfs)         exec java $JAVA_OPTS -cp "$OUT" edudfs.tools.DFSShell "$@" ;;
-  *)           sed -n '2,9p' "$0"; exit 1 ;;
+  httpfs)      exec java $JAVA_OPTS -cp "$OUT" edudfs.tools.HttpFSServer "$@" ;;
+  *)           sed -n '2,10p' "$0"; exit 1 ;;
 esac

@@ -27,7 +27,7 @@
 16. [Tests](#16-tests)
 17. [Glossary](#17-glossary) – all abbreviations (NN, DN, GS, IBR, RBW, UC …)
 
-> The dependencies of **all 78 classes** (package graph, inheritance, graph per package, "uses / used by" per class) are in [`DEPENDENCIES.md`](DEPENDENCIES.md).
+> The dependencies of **all 79 classes** (package graph, inheritance, graph per package, "uses / used by" per class) are in [`DEPENDENCIES.md`](DEPENDENCIES.md).
 
 ---
 
@@ -140,7 +140,7 @@ Details with sequence diagram, wire format and differences from the original: 8.
 
 ### 1.2 Reading path through the code
 
-You don't have to read the 78 classes in order. This path follows **one file through its life**:
+You don't have to read the 79 classes in order. This path follows **one file through its life**:
 create → write → store → confirm → read → failure cases. Each step builds on the previous one.
 Paths relative to `src/main/java/edudfs/`.
 
@@ -303,6 +303,7 @@ edudfs/
     └── tools/
         ├── MiniDFSCluster       NN + n DNs in one JVM
         ├── DFSShell             `hdfs dfs`-like shell
+        ├── HttpFSServer         WebHDFS REST gateway (for Python/pyarrow, curl), see PARQUET.md
         └── Demo                 guided scenarios
 ```
 
@@ -314,7 +315,7 @@ test lives in the same package as the class under test and may also access packa
 | Folder | Contents | created by | delete? |
 |---|---|---|---|
 | `src/main/java` | source code, 77 classes (plus `edudfsbase/`, see EDUDFSBASE.md) | by hand | no |
-| `src/test/java` | 7 test classes, 124 tests (plus `edudfsbase/`) | by hand | no |
+| `src/test/java` | 8 test classes, 126 tests (plus `edudfsbase/`) | by hand | no |
 | `conf/` | `core-site.xml`, `hdfs-site.xml` – applies to NameNode, all DataNodes and client | by hand | no |
 | `docs/` | documentation + generator | by hand or `gen_dependencies.py` | no |
 | `out/` | compiled classes for the `./hdfs` script | `./hdfs build` (also automatically on first invocation) | yes, gets rebuilt |
@@ -338,7 +339,7 @@ All packages live here under `edudfs.`, in the original under `org.apache.hadoop
 | `server.datanode` | `DataNode`, `FsDatasetImpl`, `FsVolumeImpl`, `StorageLocation`, `RoundRobinVolumeChoosingPolicy`, `ReplicaInfo`, `DataXceiver(Server)`, `BlockReceiver`, `BlockSender`, `BPServiceActor`, `BlockRecoveryWorker` | `org.apache.hadoop.hdfs.server.datanode` |
 | `server.protocol` | `DatanodeProtocol`, `InterDatanodeProtocol`, `DatanodeCommand`, `BlockCommand`, `BlockRecoveryCommand`, `DatanodeStorage`, `StorageReport`, `StorageBlockReport`, `StorageReceivedDeletedBlocks` | `org.apache.hadoop.hdfs.server.protocol` |
 | `client` | `DFSClient`, `DFSOutputStream` (+ `DataStreamer`, `ResponseProcessor`), `DFSInputStream`, `LeaseRenewer` | `org.apache.hadoop.hdfs` and `org.apache.hadoop.hdfs.client.impl` |
-| `tools` | `MiniDFSCluster`, `DFSShell`, `Demo` | `org.apache.hadoop.hdfs.MiniDFSCluster` (test jar), `org.apache.hadoop.fs.FsShell` |
+| `tools` | `MiniDFSCluster`, `DFSShell`, `HttpFSServer`, `Demo` | `org.apache.hadoop.hdfs.MiniDFSCluster` (test jar), `org.apache.hadoop.fs.FsShell`, `org.apache.hadoop.fs.http.server.HttpFSServer` |
 
 The mapping of every single class is in section 12.
 
@@ -1799,6 +1800,7 @@ Cluster ID, block pool ID and namespaceID are fixed in `HdfsServerConstants` (6.
 | `./hdfs namenode` | `server.namenode.NameNode` |
 | `./hdfs datanode <root> <xfer> <ipc>` | `server.datanode.DataNode`; `root` = root of its "machine", the volumes from `dfs.datanode.data.dir` lie below it |
 | `./hdfs dfs …` | `tools.DFSShell` |
+| `./hdfs httpfs [port]` | `tools.HttpFSServer` – WebHDFS REST gateway on port 14000, see [11.6](#116-httpfs-webhdfs-rest-gateway) |
 | `./hdfs test` | `mvn -q test` (all tests, results in `target/`) |
 
 All commands except `test` run from `out/`. If `out/` is missing, the script builds it automatically first.
@@ -1892,6 +1894,35 @@ try (DFSClient client = new DFSClient("localhost", 9000)) {
 }
 ```
 
+
+### 11.6 HttpFS: WebHDFS REST gateway
+
+`./hdfs httpfs` starts `tools.HttpFSServer` (a running EduDFS is required). It speaks a subset of the
+[WebHDFS REST API](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/WebHDFS.html) on
+`http://localhost:14000/webhdfs/v1/<path>?op=…` and forwards every call to a `DFSClient` – like HttpFS in the
+original (same port). It exists so that programs without an EduDFS client (Python with pyarrow, `curl`) can use
+the file system, above all for **range reads**:
+
+| Request | Operation |
+|---|---|
+| `GET …?op=OPEN&offset=o&length=n` | bytes `[o, o+n)` via `DFSInputStream.readFully(position, …)` (pread) |
+| `GET …?op=GETFILESTATUS`, `…?op=LISTSTATUS` | `{"FileStatus": …}`, `{"FileStatuses": {"FileStatus": […]}}` |
+| `GET …?op=GETFILEBLOCKLOCATIONS` | blocks with offset, length, block name and DataNodes |
+| `PUT …?op=CREATE[&overwrite=true][&blocksize=b][&replication=r]` | request body = file contents |
+| `PUT …?op=MKDIRS`, `DELETE …?op=DELETE[&recursive=true]` | `{"boolean": true}` |
+
+```bash
+curl 'http://localhost:14000/webhdfs/v1/?op=LISTSTATUS'
+curl -X PUT --data-binary @demo.txt 'http://localhost:14000/webhdfs/v1/user/me/demo.txt?op=CREATE&overwrite=true'
+curl 'http://localhost:14000/webhdfs/v1/user/me/demo.txt?op=OPEN&offset=5&length=4'
+```
+
+Every `OPEN` is logged with the blocks it touches, e.g.
+`OPEN /shop/orders.parquet bytes [408,893 .. 431,374) = 22,481 B  <- blk_1073741825 (22,481 B)`.
+Simplification: in the original, `CREATE` and `OPEN` answer with a 307 redirect to a DataNode (WebHDFS) or
+stream through the gateway with `data=true` (HttpFS); here the data always goes through the gateway.
+What it is used for: the Parquet hands-on in [PARQUET.md](PARQUET.md).
+
 ---
 
 ## 12. Mapping to the Hadoop original
@@ -1940,6 +1971,7 @@ The right-hand column is written out in full so that you can find the class dire
 | `client.LeaseRenewer` | `org.apache.hadoop.hdfs.client.impl.LeaseRenewer` | |
 | `tools.DFSShell` | `org.apache.hadoop.fs.FsShell`, `org.apache.hadoop.hdfs.tools.DFSAdmin`, `org.apache.hadoop.hdfs.tools.DFSck`, `org.apache.hadoop.hdfs.tools.DebugAdmin` | excerpt |
 | `tools.MiniDFSCluster` | `org.apache.hadoop.hdfs.MiniDFSCluster` (test jar) | |
+| `tools.HttpFSServer` | `org.apache.hadoop.fs.http.server.HttpFSServer` (module `hadoop-hdfs-httpfs`), API as `org.apache.hadoop.hdfs.web.resources.*` (WebHDFS) | JDK `HttpServer`, subset of the operations, no redirect, no authentication |
 
 ---
 
@@ -2030,7 +2062,7 @@ mvn test
 mvn test -Dtest=MiniDFSClusterTest#softLimitLetsAnotherClientTriggerRecovery
 ```
 
-124 tests with JUnit 5, runtime approx. 45 s (`./hdfs test` also runs the EduDFSBase tests, see [EDUDFSBASE.md](EDUDFSBASE.md#16-tests)). The Surefire configuration in the `pom.xml` shortens the timings
+126 tests with JUnit 5, runtime approx. 45 s (`./hdfs test` also runs the EduDFSBase tests, see [EDUDFSBASE.md](EDUDFSBASE.md#16-tests)). The Surefire configuration in the `pom.xml` shortens the timings
 (heartbeat 0.5 s, DataNode dead after 3 s, soft limit 2 s, hard limit 5 s) and runs all tests sequentially
 in one JVM, because the integration tests use fixed ports (9000, 50010 ff.).
 
@@ -2043,6 +2075,7 @@ in one JVM, because the integration tests use fixed ports (9000, 50010 ff.).
 | `server.namenode.FSNamesystemTest` | unit (DataNodes simulated) | 41 | lease granting, one lease per client, `AlreadyBeingCreated`, overwrite, `LeaseExpired`, writing across renames, `addBlock` with excludes, COMMITTED → COMPLETE, stale/unknown/too-short replicas, block report diff, invalidates via heartbeat, `DNA_REGISTER`, soft/hard limit, complete block recovery on the NameNode side incl. wrong recoveryId and `deleteBlock`, append (new block after the old one, without data, on an open/missing file); storages: one storage per DataNode in the pipeline, a full disk is not chosen, a replica on another disk of the same DataNode replaces the old entry, disk failure via heartbeat removes only its replicas, a storage missing from the block report is removed, foreign block pool ID rejected |
 | `server.datanode.FsDatasetImplTest` | unit (temporary directory, 2 volumes) | 19 | `StorageLocation` with `[SSD]` prefix, `subdir` computation, round-robin across the volumes, VERSION files and stable storageIDs, disk failure during operation and at startup, check of `failed.volumes.tolerated`, duplicate block on two volumes, layout `rbw/` and `finalized/subdirX/subdirY`, meta header, finalizing, block report, restart (RBW → RWR), invalidate only with matching GS, recovery with truncation and CRC recomputation, rejected stale recoveryIds, old writer cannot finalize an RUR replica |
 | `tools.MiniDFSClusterTest` | integration (NN + 4 DNs, 2 volumes each) | 27 | 12 file sizes at all chunk, packet and block boundaries, reading from any offset, seek and pread across block boundaries, `hflush` (data survives a writer crash, visible to readers of the open file), namespace via the client, rename while writing, soft limit, hard limit, `recoverLease`, writer loses the lease, LeaseRenewer keeps the lease, re-replication after DataNode failure, corrupt replica, pipeline error with abandon/exclude, deletion on the disks, DataNode restart, NameNode restart (orphaned blocks), reading without replicas, visible length of open files, double append with variable-length blocks, on-disk layout (root/volume/BP/subdir) and use of both volumes, disk failure with re-replication while the DataNode keeps running, too many disk failures shut down the DataNode |
+| `tools.HttpFSServerTest` | integration (NN + 3 DNs + gateway) | 2 | `CREATE`, `OPEN` ranges across a block boundary and beyond the end, `GETFILEBLOCKLOCATIONS`, `LISTSTATUS`/`GETFILESTATUS`/`MKDIRS`/`DELETE`, 404 and 400 errors |
 
 `MiniDFSCluster.restartNameNode()` was added for the integration tests.
 
