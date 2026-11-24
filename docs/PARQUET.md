@@ -251,7 +251,7 @@ open parquet.html
      indices with the value they point to; for `PLAIN` the values; for `DELTA_BINARY_PACKED` first value, min
      delta and bit widths (`order_id` in `orders_tuned.parquet`: 4–7 bits per value instead of 64).
      Values are aligned with the rows: a null row has a definition level 0 and no entry in the values.
-5. **Footer** – position, version, schema.
+5. **Footer** – magic, footer length, version, schema.
 6. **Statistics matrix** – min/max of every column in every row group; after a simulation, green/red show which
    condition keeps or rules out a row group.
 

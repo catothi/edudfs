@@ -566,7 +566,6 @@ document.getElementById("footer").innerHTML = `<table>
   <tr id="f-len"><th>footer length</th><td>bytes ${fmt(D.size - 8)} … ${fmt(D.size - 5)}: ${fmt(D.footer_len)} (4 B, little endian).
     The reader reads the last 8 bytes first, then: footer start = file size − 8 − footer length =
     ${fmt(D.size)} − 8 − ${fmt(D.footer_len)} = ${fmt(D.footer_offset)}.</td></tr>
-  <tr><th>position</th><td>${fmt(D.footer_offset)} … ${fmt(D.size - 8)} = ${fmt(D.footer_len)} B, then 4 B length + 4 B "PAR1"</td></tr>
   <tr><th>format version</th><td>${D.format_version}</td></tr>
   <tr><th>created by</th><td>${esc(D.created_by)}</td></tr>
   <tr><th>rows</th><td>${fmt(D.num_rows)} in ${D.row_groups.length} row groups</td></tr>
